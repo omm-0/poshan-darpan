@@ -52,24 +52,29 @@ const AttendanceHelper = {
             query = query.where('schoolId', '==', filter.schoolId);
         }
 
+        // Fetch all matching docs, then filter + sort in JS
+        const snapshot = await query.get();
+        let results = snapshot.docs.map(doc => ({ _id: doc.id, ...doc.data() }));
+
+        // Date range filter in JS
         if (filter.dateFrom) {
-            query = query.where('date', '>=', new Date(filter.dateFrom).toISOString());
+            const from = new Date(filter.dateFrom).toISOString();
+            results = results.filter(r => r.date >= from);
         }
         if (filter.dateTo) {
-            query = query.where('date', '<=', new Date(filter.dateTo).toISOString());
+            const to = new Date(filter.dateTo).toISOString();
+            results = results.filter(r => r.date <= to);
         }
 
-        // Sort by date descending by default
-        const sortField = options.sortField || 'date';
-        const sortDir = options.sortDir || 'desc';
-        query = query.orderBy(sortField, sortDir);
+        // Sort by date descending
+        results.sort((a, b) => b.date.localeCompare(a.date));
 
+        // Limit
         if (options.limit) {
-            query = query.limit(options.limit);
+            results = results.slice(0, options.limit);
         }
 
-        const snapshot = await query.get();
-        return snapshot.docs.map(doc => ({ _id: doc.id, ...doc.data() }));
+        return results;
     },
 
     // Find today's attendance for a school
@@ -89,17 +94,23 @@ const AttendanceHelper = {
 
     // Find records within a date range for a school
     async findInRange(schoolId, startDate, endDate) {
-        let query = this.collection()
-            .where('date', '>=', startDate.toISOString())
-            .where('date', '<=', endDate.toISOString());
+        let query = this.collection();
 
         if (schoolId) {
             query = query.where('schoolId', '==', schoolId);
         }
 
-        query = query.orderBy('date', 'asc');
+        // Fetch all for school, filter date range in JS
         const snapshot = await query.get();
-        return snapshot.docs.map(doc => ({ _id: doc.id, ...doc.data() }));
+        let results = snapshot.docs.map(doc => ({ _id: doc.id, ...doc.data() }));
+
+        const startISO = startDate.toISOString();
+        const endISO = endDate.toISOString();
+        results = results.filter(r => r.date >= startISO && r.date <= endISO);
+
+        // Sort ascending
+        results.sort((a, b) => a.date.localeCompare(b.date));
+        return results;
     },
 
     async update(id, data) {

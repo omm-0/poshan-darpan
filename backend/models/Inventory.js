@@ -48,12 +48,14 @@ const InventoryHelper = {
             query = query.where('schoolId', '==', filter.schoolId);
         }
 
-        query = query.orderBy('name');
+        // No orderBy in Firestore to avoid composite index; sort in JS
         const snapshot = await query.get();
-        return snapshot.docs.map(doc => {
+        const results = snapshot.docs.map(doc => {
             const data = doc.data();
             return { _id: doc.id, ...data, ...this.computeVirtuals(data) };
         });
+
+        return results.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     },
 
     async update(id, data) {

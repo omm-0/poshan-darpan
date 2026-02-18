@@ -34,12 +34,13 @@ const SchoolHelper = {
         let query = this.collection();
 
         if (filter.district) {
-            // Case-insensitive search: store lowercase in DB, query lowercase
             query = query.where('district', '==', filter.district);
         }
 
-        const snapshot = await query.orderBy('name').get();
-        return snapshot.docs.map(doc => ({ _id: doc.id, ...doc.data() }));
+        const snapshot = await query.get();
+        const results = snapshot.docs.map(doc => ({ _id: doc.id, ...doc.data() }));
+        // Sort by name in JS to avoid composite index
+        return results.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     },
 
     async update(id, data) {

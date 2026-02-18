@@ -57,13 +57,23 @@ const ReportHelper = {
         if (filter.schoolId) {
             query = query.where('schoolId', '==', filter.schoolId);
         }
+
+        // Fetch all, filter + sort in JS to avoid composite indexes
+        const snapshot = await query.get();
+        let results = snapshot.docs.map(doc => ({ _id: doc.id, ...doc.data() }));
+
         if (filter.year) {
-            query = query.where('year', '==', parseInt(filter.year));
+            const yr = parseInt(filter.year);
+            results = results.filter(r => r.year === yr);
         }
 
-        query = query.orderBy('year', 'desc').orderBy('month', 'desc');
-        const snapshot = await query.get();
-        return snapshot.docs.map(doc => ({ _id: doc.id, ...doc.data() }));
+        // Sort by year desc, then month desc
+        results.sort((a, b) => {
+            if (b.year !== a.year) return b.year - a.year;
+            return b.month - a.month;
+        });
+
+        return results;
     },
 
     async deleteAll() {

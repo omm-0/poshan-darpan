@@ -28,9 +28,14 @@ const ActivityLogHelper = {
             query = query.where('schoolId', '==', filter.schoolId);
         }
 
-        query = query.orderBy('createdAt', 'desc').limit(limit);
+        // Fetch all, sort + limit in JS to avoid composite index
         const snapshot = await query.get();
-        return snapshot.docs.map(doc => ({ _id: doc.id, ...doc.data() }));
+        let results = snapshot.docs.map(doc => ({ _id: doc.id, ...doc.data() }));
+
+        // Sort by createdAt descending
+        results.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+        return results.slice(0, limit);
     },
 
     async deleteAll() {
