@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POSHAN DARPAN | Mid-Day Meal Analytics</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Icons (Lucide) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <!-- Configuration for Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        cream: '#FFFBF0',
+                        poshan: {
+                            50: '#FFF7ED',
+                            100: '#FFEDD5',
+                            200: '#FED7AA',
+                            300: '#FDBA74',
+                            400: '#FB923C',
+                            500: '#F97316',
+                            600: '#EA580C',
+                            700: '#C2410C',
+                            800: '#9A3412',
+                            900: '#7C2D12',
+                        },
+                        sun: '#FDE047',
+                    },
+                    fontFamily: {
+                        serif: ['"DM Serif Display"', 'serif'],
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Custom Aesthetics */
+        body {
+            background-color: #FFFBF0;
+            /* Cream Background */
+            color: #431407;
+            /* Dark Brown Text */
+        }
+
+        /* Smooth Transitions */
+        .page-transition {
+            animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Glassmorphism Cards */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 247, 237, 0.5);
+            box-shadow: 0 4px 6px -1px rgba(251, 146, 60, 0.05), 0 2px 4px -1px rgba(251, 146, 60, 0.03);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #FED7AA;
+            border-radius: 10px;
+        }
+
+        /* Interactive Elements */
+        .nav-item.active {
+            background-color: #FFF7ED;
+            color: #C2410C;
+            border-right: 3px solid #EA580C;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #F97316 0%, #EA580C 100%);
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 15px -3px rgba(234, 88, 12, 0.2);
+        }
+
+        /* Loader */
+        .grain-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 50;
+            opacity: 0.4;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");
+        }
+
+        /* Toast notification */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 100;
+            transform: translateY(150%);
+            transition: transform 0.3s ease;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+
+<body class="antialiased overflow-hidden font-sans h-screen flex flex-col">
+
+    <!-- Texture Overlay -->
+    <div class="grain-overlay"></div>
+
+    <!-- Toast Notification -->
+    <div id="toast"
+        class="toast glass-card px-6 py-4 rounded-xl shadow-xl border border-poshan-200 flex items-center gap-3">
+        <div id="toast-icon"
+            class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 shrink-0">
+            <i data-lucide="check" class="w-4 h-4"></i>
+        </div>
+        <p id="toast-message" class="text-sm font-medium text-poshan-900"></p>
+    </div>
+
+    <!-- APP CONTAINER -->
+    <div id="app" class="relative z-10 w-full h-full">
+
+        <!-- LOGIN SCREEN -->
+        <div id="login-view"
+            class="absolute inset-0 z-50 flex items-center justify-center p-4 bg-cream bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-poshan-100 via-transparent to-transparent">
+            <div
+                class="glass-card w-full max-w-md p-8 rounded-2xl border border-poshan-100 shadow-xl relative overflow-hidden">
+                <!-- Decorative Circle -->
+                <div class="absolute -top-10 -right-10 w-32 h-32 bg-poshan-200 rounded-full blur-2xl opacity-50"></div>
+
+                <div class="text-center mb-8 relative">
+                    <div
+                        class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-poshan-100 text-poshan-600 mb-4 shadow-sm">
+                        <i data-lucide="utensils-crossed" class="w-8 h-8"></i>
+                    </div>
+                    <h1 class="font-serif text-3xl text-poshan-900 mb-2">Poshan Darpan</h1>
+                    <p class="text-poshan-800/60 text-sm">Mid-Day Meal Analytics System</p>
+                </div>
+
+                <div id="login-error"
+                    class="hidden mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 text-center">
+                </div>
+
+                <form id="login-form" class="space-y-5 relative">
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold uppercase tracking-wider text-poshan-800/70 ml-1">User
+                            Role</label>
+                        <div class="grid grid-cols-2 gap-3 p-1 bg-poshan-50/50 rounded-lg border border-poshan-100">
+                            <button type="button"
+                                class="role-btn active py-2 px-4 rounded-md text-sm font-medium transition-all bg-white text-poshan-700 shadow-sm"
+                                data-role="school_admin">
+                                School Admin
+                            </button>
+                            <button type="button"
+                                class="role-btn py-2 px-4 rounded-md text-sm font-medium transition-all text-poshan-600 hover:bg-white/50"
+                                data-role="govt_officer">
+                                Govt. Officer
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label
+                            class="text-xs font-semibold uppercase tracking-wider text-poshan-800/70 ml-1">Username</label>
+                        <input type="text" id="login-username" placeholder="Enter ID"
+                            class="w-full px-4 py-3 rounded-xl bg-white/80 border border-poshan-200 focus:outline-none focus:ring-2 focus:ring-poshan-400 focus:border-transparent transition-all placeholder:text-poshan-300 text-poshan-900">
+                    </div>
+
+                    <div class="space-y-1">
+                        <label
+                            class="text-xs font-semibold uppercase tracking-wider text-poshan-800/70 ml-1">Password</label>
+                        <input type="password" id="login-password" placeholder="••••••••"
+                            class="w-full px-4 py-3 rounded-xl bg-white/80 border border-poshan-200 focus:outline-none focus:ring-2 focus:ring-poshan-400 focus:border-transparent transition-all placeholder:text-poshan-300 text-poshan-900">
+                    </div>
+
+                    <button type="submit"
+                        class="btn-primary w-full py-3.5 rounded-xl text-white font-semibold shadow-lg shadow-poshan-500/20 flex items-center justify-center gap-2 group">
+                        <span>Access Dashboard</span>
+                        <i data-lucide="arrow-right" class="w-4 h-4 transition-transform group-hover:translate-x-1"></i>
+                    </button>
+                </form>
+
+                <div class="mt-6 text-center">
+                    <p class="text-xs text-poshan-800/40">Protected Government System • Ver 1.0.4</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- DASHBOARD LAYOUT (Hidden Initially) -->
+        <div id="main-layout" class="hidden h-full flex overflow-hidden">
+
+            <!-- SIDEBAR -->
+            <aside class="w-64 glass-card h-full flex flex-col border-r border-poshan-100 z-20">
+                <div class="p-6 flex items-center gap-3 border-b border-poshan-100/50">
+                    <div
+                        class="w-8 h-8 rounded-lg bg-poshan-600 flex items-center justify-center text-white shadow-md shadow-poshan-500/30">
+                        <i data-lucide="sun" class="w-5 h-5"></i>
+                    </div>
+                    <span class="font-serif text-xl text-poshan-900 tracking-tight">Poshan<br><span
+                            class="text-sm font-sans text-poshan-600 font-bold">DARPAN</span></span>
+                </div>
+
+                <nav class="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+                    <p class="px-4 text-xs font-bold text-poshan-400 uppercase tracking-widest mb-2">Menu</p>
+
+                    <a href="#"
+                        class="nav-item active flex items-center gap-3 px-4 py-3 rounded-xl text-poshan-900/70 hover:bg-poshan-50 transition-colors"
+                        data-page="dashboard">
+                        <i data-lucide="layout-grid" class="w-5 h-5"></i>
+                        <span class="font-medium">Dashboard</span>
+                    </a>
+
+                    <a href="#"
+                        class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl text-poshan-900/70 hover:bg-poshan-50 transition-colors"
+                        data-page="attendance">
+                        <i data-lucide="users" class="w-5 h-5"></i>
+                        <span class="font-medium">Attendance</span>
+                    </a>
+
+                    <a href="#"
+                        class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl text-poshan-900/70 hover:bg-poshan-50 transition-colors"
+                        data-page="inventory">
+                        <i data-lucide="package" class="w-5 h-5"></i>
+                        <span class="font-medium">Inventory</span>
+                    </a>
+
+                    <a href="#"
+                        class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl text-poshan-900/70 hover:bg-poshan-50 transition-colors"
+                        data-page="reports">
+                        <i data-lucide="file-bar-chart" class="w-5 h-5"></i>
+                        <span class="font-medium">Reports</span>
+                    </a>
+                </nav>
+
+                <div class="p-4 border-t border-poshan-100/50">
+                    <div class="bg-poshan-50 rounded-xl p-3 flex items-center gap-3 mb-3">
+                        <div class="w-8 h-8 rounded-full bg-poshan-200 flex items-center justify-center text-poshan-800 text-sm font-bold"
+                            id="user-initials">
+                            AS
+                        </div>
+                        <div class="overflow-hidden">
+                            <p class="text-sm font-bold text-poshan-900 truncate" id="user-name">Anita Sharma</p>
+                            <p class="text-xs text-poshan-600 truncate" id="user-role-display">School Admin</p>
+                        </div>
+                    </div>
+                    <button onclick="logout()"
+                        class="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm text-poshan-700 hover:text-red-600 transition-colors">
+                        <i data-lucide="log-out" class="w-4 h-4"></i>
+                        <span>Sign Out</span>
+                    </button>
+                </div>
+            </aside>
+
+            <!-- MAIN CONTENT AREA -->
+            <main class="flex-1 h-full overflow-y-auto relative scroll-smooth bg-cream">
+                <!-- TOP HEADER -->
+                <header
+                    class="sticky top-0 z-10 glass-card px-8 py-4 flex items-center justify-between border-b border-poshan-100/50">
+                    <div>
+                        <h2 class="font-serif text-2xl text-poshan-900" id="page-title">Overview</h2>
+                        <p class="text-sm text-poshan-600" id="current-date">Saturday, Feb 14, 2026</p>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <button class="relative p-2 text-poshan-600 hover:bg-poshan-100 rounded-full transition-colors">
+                            <i data-lucide="bell" class="w-5 h-5"></i>
+                            <span
+                                class="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+                        </button>
+                        <button onclick="handleExportData()"
+                            class="btn-primary px-4 py-2 rounded-lg text-sm font-medium text-white shadow-md flex items-center gap-2">
+                            <i data-lucide="download" class="w-4 h-4"></i>
+                            <span>Export Data</span>
+                        </button>
+                    </div>
+                </header>
+
+                <!-- DYNAMIC CONTENT CONTAINER -->
+                <div id="content-area" class="p-8 pb-20">
+                    <!-- Content injected via JS -->
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // --- API CONFIG ---
+        // Auto-detect: use relative path when served from backend, else fallback to localhost
+        const API_BASE = (window.location.port === '5000' || window.location.protocol === 'http:')
+            ? `${window.location.origin}/api`
+            : 'http://localhost:5000/api';
+
+        // --- STATE ---
+        const state = {
+            token: localStorage.getItem('poshan_token') || null,
+            user: JSON.parse(localStorage.getItem('poshan_user') || 'null'),
+            currentUserRole: 'school_admin',
+            // Cache for fetched data
+            dashboardData: null,
+            inventoryData: [],
+            attendanceData: [],
+        };
+
+        // --- API HELPER ---
+        async function api(endpoint, options = {}) {
+            const url = `${API_BASE}${endpoint}`;
+            const headers = {
+                'Content-Type': 'application/json',
+                ...(state.token ? { 'Authorization': `Bearer ${state.token}` } : {}),
+                ...options.headers,
+            };
+
+            try {
+                const res = await fetch(url, { ...options, headers });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.message || 'API error');
+                }
+                return data;
+            } catch (error) {
+                console.error(`API Error [${endpoint}]:`, error.message);
+                throw error;
+            }
+        }
+
+        // --- TOAST ---
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toast-icon');
+            const msg = document.getElementById('toast-message');
+
+            msg.textContent = message;
+
+            if (type === 'success') {
+                icon.className = 'w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 shrink-0';
+                icon.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i>';
+            } else if (type === 'error') {
+                icon.className = 'w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600 shrink-0';
+                icon.innerHTML = '<i data-lucide="x" class="w-4 h-4"></i>';
+            } else {
+                icon.className = 'w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shrink-0';
+                icon.innerHTML = '<i data-lucide="info" class="w-4 h-4"></i>';
+            }
+
+            lucide.createIcons();
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        // --- INIT ---
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            updateDate();
+
+            // Check if already logged in
+            if (state.token && state.user) {
+                showDashboard();
+                return;
+            }
+
+            // Login Form Logic
+            const roleBtns = document.querySelectorAll('.role-btn');
+            roleBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    roleBtns.forEach(b => {
+                        b.classList.remove('active', 'bg-white', 'text-poshan-700', 'shadow-sm');
+                        b.classList.add('text-poshan-600');
+                    });
+                    btn.classList.add('active', 'bg-white', 'text-poshan-700', 'shadow-sm');
+                    btn.classList.remove('text-poshan-600');
+                    state.currentUserRole = btn.dataset.role;
+                });
+            });
+
+            document.getElementById('login-form').addEventListener('submit', handleLogin);
+
+            // Navigation Logic
+            document.querySelectorAll('.nav-item').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    document.querySelectorAll('.nav-item').forEach(l => l.classList.remove('active', 'bg-poshan-50', 'text-poshan-900', 'border-right'));
+                    document.querySelectorAll('.nav-item').forEach(l => {
+                        l.classList.remove('border-r-3', 'border-poshan-600');
+                        l.classList.add('text-poshan-900/70');
+                    });
+                    const target = e.currentTarget;
+                    target.classList.add('active');
+                    renderPage(target.dataset.page);
+                });
+            });
+        });
+
+        // --- LOGIN HANDLER ---
+        async function handleLogin(e) {
+            e.preventDefault();
+            const errorDiv = document.getElementById('login-error');
+            errorDiv.classList.add('hidden');
+
+            const username = document.getElementById('login-username').value.trim();
+            const password = document.getElementById('login-password').value;
+            const role = state.currentUserRole;
+
+            if (!username || !password) {
+                errorDiv.textContent = 'Please enter username and password';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            const btn = e.target.querySelector('button[type="submit"]');
+            const originalContent = btn.innerHTML;
+            btn.innerHTML = `<i data-lucide="loader-2" class="animate-spin"></i> Processing`;
+            btn.disabled = true;
+            lucide.createIcons();
+
+            try {
+                const data = await api('/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({ username, password, role }),
+                });
+
+                // Save to state and localStorage
+                state.token = data.token;
+                state.user = data.user;
+                localStorage.setItem('poshan_token', data.token);
+                localStorage.setItem('poshan_user', JSON.stringify(data.user));
+
+                showDashboard();
+            } catch (error) {
+                errorDiv.textContent = error.message || 'Login failed. Please try again.';
+                errorDiv.classList.remove('hidden');
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+                lucide.createIcons();
+            }
+        }
+
+        // --- SHOW DASHBOARD ---
+        function showDashboard() {
+            document.getElementById('login-view').classList.add('hidden');
+            document.getElementById('main-layout').classList.remove('hidden');
+
+            // Update sidebar user info
+            const nameDisplay = document.getElementById('user-name');
+            const roleDisplay = document.getElementById('user-role-display');
+            const initialsDisplay = document.getElementById('user-initials');
+
+            nameDisplay.textContent = state.user.fullName;
+            roleDisplay.textContent = state.user.designation || state.user.role;
+
+            // Generate initials
+            const names = state.user.fullName.split(' ');
+            initialsDisplay.textContent = names.map(n => n[0]).join('').toUpperCase();
+
+            renderPage('dashboard');
+        }
+
+        // --- LOGOUT ---
+        function logout() {
+            state.token = null;
+            state.user = null;
+            state.dashboardData = null;
+            state.inventoryData = [];
+            state.attendanceData = [];
+            localStorage.removeItem('poshan_token');
+            localStorage.removeItem('poshan_user');
+
+            document.getElementById('main-layout').classList.add('hidden');
+            document.getElementById('login-view').classList.remove('hidden');
+            document.getElementById('login-view').classList.add('page-transition');
+            document.getElementById('login-form').reset();
+            document.getElementById('login-error').classList.add('hidden');
+
+            const btn = document.querySelector('#login-form button[type="submit"]');
+            btn.innerHTML = `<span>Access Dashboard</span><i data-lucide="arrow-right" class="w-4 h-4"></i>`;
+            btn.disabled = false;
+            lucide.createIcons();
+        }
+
+        // --- RENDER FUNCTIONS ---
+        function renderPage(pageName) {
+            const container = document.getElementById('content-area');
+            const title = document.getElementById('page-title');
+
+            container.innerHTML = '<div class="flex items-center justify-center h-64"><i data-lucide="loader-2" class="w-8 h-8 animate-spin text-poshan-400"></i></div>';
+            lucide.createIcons();
+
+            container.classList.remove('page-transition');
+            void container.offsetWidth;
+            container.classList.add('page-transition');
+
+            switch (pageName) {
+                case 'dashboard':
+                    title.textContent = 'Dashboard Overview';
+                    loadDashboard(container);
+                    break;
+                case 'attendance':
+                    title.textContent = 'Daily Attendance';
+                    loadAttendance(container);
+                    break;
+                case 'inventory':
+                    title.textContent = 'Stock & Inventory';
+                    loadInventory(container);
+                    break;
+                case 'reports':
+                    title.textContent = 'Analytics Reports';
+                    loadReports(container);
+                    break;
+            }
+        }
+
+        // --- DASHBOARD PAGE ---
+        async function loadDashboard(container) {
+            try {
+                const [summaryRes, trendRes, feedRes] = await Promise.all([
+                    api('/dashboard/summary'),
+                    api('/dashboard/attendance-trend'),
+                    api('/dashboard/activity-feed'),
+                ]);
+
+                const summary = summaryRes.data;
+                const trend = trendRes.data;
+                const activities = feedRes.data;
+
+                container.innerHTML = getDashboardHTML(summary, trend, activities);
+                lucide.createIcons();
+                initDashboardCharts(trend);
+            } catch (error) {
+                container.innerHTML = `<div class="text-center py-20 text-poshan-500"><p>Failed to load dashboard data.</p><p class="text-sm mt-2">${error.message}</p></div>`;
+            }
+        }
+
+        function getDashboardHTML(summary, trend, activities) {
+            const iconMap = { check: 'check', truck: 'truck', 'file-text': 'file-text', 'check-circle': 'check-circle' };
+            const colorMap = { green: 'green', orange: 'orange', blue: 'blue' };
+
+            return `
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <!-- Metric Card 1 -->
+                    <div class="glass-card p-6 rounded-2xl relative overflow-hidden group">
+                        <div class="absolute right-0 top-0 p-6 opacity-10 group-hover:scale-110 transition-transform">
+                            <i data-lucide="utensils" class="w-24 h-24"></i>
+                        </div>
+                        <p class="text-poshan-600 font-medium text-sm uppercase tracking-wide">Meals Served Today</p>
+                        <h3 class="font-serif text-4xl text-poshan-900 mt-2">${summary.mealsToday.served} <span class="text-lg text-poshan-500 font-sans">/ ${summary.mealsToday.total}</span></h3>
+                        <div class="mt-4 flex items-center gap-2 ${summary.mealsToday.participation >= 80 ? 'text-green-600 bg-green-50' : 'text-orange-600 bg-orange-50'} text-sm font-medium w-fit px-2 py-1 rounded-md">
+                            <i data-lucide="trending-up" class="w-4 h-4"></i>
+                            <span>${summary.mealsToday.participation}% Participation</span>
+                        </div>
+                    </div>
+
+                    <!-- Metric Card 2 -->
+                    <div class="glass-card p-6 rounded-2xl relative overflow-hidden group">
+                         <div class="absolute right-0 top-0 p-6 opacity-10 group-hover:scale-110 transition-transform">
+                            <i data-lucide="alert-triangle" class="w-24 h-24"></i>
+                        </div>
+                        <p class="text-poshan-600 font-medium text-sm uppercase tracking-wide">Stock Alerts</p>
+                        <h3 class="font-serif text-4xl text-poshan-900 mt-2">${summary.stockAlerts.count} <span class="text-lg text-poshan-500 font-sans">${summary.stockAlerts.count > 0 ? 'Critical' : 'All Good'}</span></h3>
+                        <div class="mt-4 flex items-center gap-2 ${summary.stockAlerts.count > 0 ? 'text-red-600 bg-red-50' : 'text-green-600 bg-green-50'} text-sm font-medium w-fit px-2 py-1 rounded-md">
+                            <i data-lucide="${summary.stockAlerts.count > 0 ? 'alert-circle' : 'check-circle'}" class="w-4 h-4"></i>
+                            <span>${summary.stockAlerts.criticalItems.length > 0 ? summary.stockAlerts.criticalItems.join(', ') + ' Low' : 'Stock Healthy'}</span>
+                        </div>
+                    </div>
+
+                    <!-- Metric Card 3 -->
+                    <div class="glass-card p-6 rounded-2xl relative overflow-hidden group">
+                         <div class="absolute right-0 top-0 p-6 opacity-10 group-hover:scale-110 transition-transform">
+                            <i data-lucide="calendar-check" class="w-24 h-24"></i>
+                        </div>
+                        <p class="text-poshan-600 font-medium text-sm uppercase tracking-wide">Reporting Status</p>
+                        <h3 class="font-serif text-4xl text-poshan-900 mt-2">Up to Date</h3>
+                        <div class="mt-4 flex items-center gap-2 text-blue-600 text-sm font-medium bg-blue-50 w-fit px-2 py-1 rounded-md">
+                            <i data-lucide="check-circle" class="w-4 h-4"></i>
+                            <span>Last sync: ${summary.syncStatus}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- Chart Section -->
+                    <div class="glass-card p-6 rounded-2xl">
+                        <h4 class="font-serif text-xl text-poshan-900 mb-6">Monthly Attendance Trends</h4>
+                        <canvas id="attendanceChart" height="200"></canvas>
+                    </div>
+
+                    <!-- Recent Activity -->
+                    <div class="glass-card p-6 rounded-2xl">
+                        <h4 class="font-serif text-xl text-poshan-900 mb-6">Recent Updates</h4>
+                        <div class="space-y-4">
+                            ${activities.length > 0 ? activities.map(act => {
+                const colors = { green: 'green', orange: 'orange', blue: 'blue' };
+                const c = colors[act.iconColor] || 'green';
+                const timeAgo = getTimeAgo(act.createdAt);
+                return `
+                                <div class="flex items-start gap-4 p-3 hover:bg-white/50 rounded-xl transition-colors">
+                                    <div class="w-10 h-10 rounded-full bg-${c}-100 flex items-center justify-center text-${c}-600 shrink-0">
+                                        <i data-lucide="${act.icon || 'check'}" class="w-5 h-5"></i>
+                                    </div>
+                                    <div>
+                                        <p class="text-poshan-900 font-medium">${act.title}</p>
+                                        <p class="text-sm text-poshan-600">${act.description}</p>
+                                    </div>
+                                    <span class="ml-auto text-xs text-poshan-400 whitespace-nowrap">${timeAgo}</span>
+                                </div>`;
+            }).join('') : '<p class="text-poshan-400 text-center py-4">No recent activity</p>'}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- ATTENDANCE PAGE ---
+        async function loadAttendance(container) {
+            try {
+                const res = await api('/attendance');
+                state.attendanceData = res.data;
+
+                container.innerHTML = getAttendanceHTML(res.data);
+                lucide.createIcons();
+            } catch (error) {
+                container.innerHTML = `<div class="text-center py-20 text-poshan-500"><p>Failed to load attendance data.</p><p class="text-sm mt-2">${error.message}</p></div>`;
+            }
+        }
+
+        function getAttendanceHTML(records) {
+            return `
+                <div class="max-w-4xl mx-auto">
+                    <!-- Input Form -->
+                    <div class="glass-card p-8 rounded-2xl mb-8 border-l-4 border-l-poshan-500">
+                        <h3 class="font-serif text-2xl text-poshan-900 mb-6">Record Today's Meal</h3>
+                        <form id="attendance-form" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="space-y-2">
+                                <label class="text-sm font-bold text-poshan-700 uppercase tracking-wide">Date</label>
+                                <input type="date" id="att-date" value="${new Date().toISOString().split('T')[0]}" class="w-full px-4 py-3 rounded-xl bg-white/50 border border-poshan-200 focus:outline-none focus:ring-2 focus:ring-poshan-400 text-poshan-900">
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-sm font-bold text-poshan-700 uppercase tracking-wide">Total Enrolled</label>
+                                <input type="number" value="${state.user?.schoolId?.totalEnrolled || 120}" readonly class="w-full px-4 py-3 rounded-xl bg-poshan-50/50 border border-poshan-100 text-poshan-500 cursor-not-allowed">
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-sm font-bold text-poshan-700 uppercase tracking-wide">Students Present</label>
+                                <input type="number" id="att-present" placeholder="Enter count" class="w-full px-4 py-3 rounded-xl bg-white/50 border border-poshan-200 focus:outline-none focus:ring-2 focus:ring-poshan-400 text-poshan-900">
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-sm font-bold text-poshan-700 uppercase tracking-wide">Menu Served</label>
+                                <select id="att-menu" class="w-full px-4 py-3 rounded-xl bg-white/50 border border-poshan-200 focus:outline-none focus:ring-2 focus:ring-poshan-400 text-poshan-900">
+                                    <option>Rice & Dal</option>
+                                    <option>Roti & Seasonal Sabzi</option>
+                                    <option>Khichdi</option>
+                                    <option>Kheer & Puri</option>
+                                </select>
+                            </div>
+                            <div class="md:col-span-2 mt-4">
+                                <button type="submit" class="btn-primary w-full md:w-auto px-8 py-3 rounded-xl text-white font-medium shadow-lg shadow-poshan-500/20 flex items-center justify-center gap-2">
+                                    <i data-lucide="save" class="w-5 h-5"></i>
+                                    <span>Submit Attendance</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- History Table -->
+                    <div class="glass-card rounded-2xl overflow-hidden">
+                        <div class="px-8 py-6 border-b border-poshan-100 bg-white/40">
+                            <h4 class="font-serif text-xl text-poshan-900">Previous Records</h4>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead class="bg-poshan-50/50 text-poshan-600 font-medium text-xs uppercase tracking-wider">
+                                    <tr>
+                                        <th class="px-8 py-4">Date</th>
+                                        <th class="px-8 py-4">Menu</th>
+                                        <th class="px-8 py-4">Students Fed</th>
+                                        <th class="px-8 py-4">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-poshan-100 text-sm">
+                                    ${records.map(record => `
+                                    <tr class="hover:bg-white/60 transition-colors">
+                                        <td class="px-8 py-4 font-medium text-poshan-900">${new Date(record.date).toISOString().split('T')[0]}</td>
+                                        <td class="px-8 py-4 text-poshan-700">${record.menuServed}</td>
+                                        <td class="px-8 py-4 text-poshan-700">${record.studentsPresent}/${record.totalEnrolled}</td>
+                                        <td class="px-8 py-4">
+                                            ${record.verified
+                    ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Verified</span>'
+                    : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Pending</span>
+                                                   ${state.user?.role === 'govt_officer' ? `<button onclick="verifyRecord('${record._id}')" class="ml-2 text-xs text-blue-600 hover:underline">Verify</button>` : ''}`
+                }
+                                        </td>
+                                    </tr>
+                                    `).join('')}
+                                    ${records.length === 0 ? '<tr><td colspan="4" class="px-8 py-8 text-center text-poshan-400">No records found</td></tr>' : ''}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Attach form handler after render
+            setTimeout(() => {
+                const form = document.getElementById('attendance-form');
+                if (form) {
+                    form.addEventListener('submit', handleAttendanceSubmit);
+                }
+            }, 100);
+        }
+
+        async function handleAttendanceSubmit(e) {
+            e.preventDefault();
+            const date = document.getElementById('att-date').value;
+            const studentsPresent = parseInt(document.getElementById('att-present').value);
+            const menuServed = document.getElementById('att-menu').value;
+
+            if (!studentsPresent || studentsPresent <= 0) {
+                showToast('Please enter a valid student count', 'error');
+                return;
+            }
+
+            const btn = e.target.querySelector('button[type="submit"]');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> Saving...`;
+            btn.disabled = true;
+            lucide.createIcons();
+
+            try {
+                await api('/attendance', {
+                    method: 'POST',
+                    body: JSON.stringify({ date, studentsPresent, menuServed }),
+                });
+
+                showToast('Attendance submitted successfully!');
+                renderPage('attendance'); // Refresh
+            } catch (error) {
+                showToast(error.message || 'Failed to submit', 'error');
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+                lucide.createIcons();
+            }
+        }
+
+        async function verifyRecord(id) {
+            try {
+                await api(`/attendance/${id}/verify`, { method: 'PATCH' });
+                showToast('Record verified successfully!');
+                renderPage('attendance');
+            } catch (error) {
+                showToast(error.message || 'Verification failed', 'error');
+            }
+        }
+
+        // --- INVENTORY PAGE ---
+        async function loadInventory(container) {
+            try {
+                const res = await api('/inventory');
+                state.inventoryData = res.data;
+
+                container.innerHTML = getInventoryHTML(res.data);
+                lucide.createIcons();
+            } catch (error) {
+                container.innerHTML = `<div class="text-center py-20 text-poshan-500"><p>Failed to load inventory data.</p><p class="text-sm mt-2">${error.message}</p></div>`;
+            }
+        }
+
+        function getInventoryHTML(items) {
+            return `
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    ${items.map(item => {
+                const percent = item.percentFull || Math.round((item.quantity / item.maxCapacity) * 100);
+                const isLow = percent < 20;
+                return `
+                        <div class="glass-card p-6 rounded-2xl flex flex-col justify-between h-full ${isLow ? 'border-red-200 ring-2 ring-red-100' : ''}">
+                            <div>
+                                <div class="flex justify-between items-start mb-4">
+                                    <div class="p-3 rounded-lg bg-poshan-50 text-poshan-600">
+                                        <i data-lucide="package" class="w-6 h-6"></i>
+                                    </div>
+                                    ${isLow ? '<span class="px-2 py-1 bg-red-100 text-red-600 text-xs font-bold rounded uppercase">Low Stock</span>' : ''}
+                                </div>
+                                <h3 class="font-serif text-xl text-poshan-900 mb-1">${item.name}</h3>
+                                <p class="text-3xl font-bold text-poshan-700 mb-4">
+                                    ${item.quantity}<span class="text-sm font-normal text-poshan-500 ml-1">${item.unit}</span>
+                                </p>
+                            </div>
+                            
+                            <div class="w-full bg-poshan-100 rounded-full h-2.5 mb-2 overflow-hidden">
+                                <div class="h-2.5 rounded-full transition-all duration-1000 ease-out" style="width: ${percent}%; background-color: ${isLow ? '#EF4444' : (item.color || '#F97316')}"></div>
+                            </div>
+                            <p class="text-xs text-poshan-400">Capacity: ${item.maxCapacity}${item.unit}</p>
+                            
+                            <button onclick="handleAddStockQuick('${item._id}', '${item.name}')" class="mt-4 w-full py-2 border border-poshan-200 rounded-lg text-sm font-medium text-poshan-600 hover:bg-poshan-50 transition-colors">
+                                + Add Stock
+                            </button>
+                        </div>
+                        `;
+            }).join('')}
+                </div>
+
+                <!-- Add Stock Form -->
+                 <div class="glass-card p-8 rounded-2xl">
+                    <h3 class="font-serif text-xl text-poshan-900 mb-6 flex items-center gap-2">
+                        <i data-lucide="plus-circle" class="w-5 h-5 text-poshan-500"></i>
+                        Update Inventory
+                    </h3>
+                    <form id="stock-form" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <select id="stock-item" class="px-4 py-3 rounded-xl bg-white/50 border border-poshan-200 text-poshan-900">
+                            <option value="">Select Item...</option>
+                            ${items.map(i => `<option value="${i._id}">${i.name}</option>`).join('')}
+                        </select>
+                        <input type="number" id="stock-quantity" placeholder="Quantity to add" class="px-4 py-3 rounded-xl bg-white/50 border border-poshan-200 text-poshan-900">
+                        <button type="submit" class="btn-primary rounded-xl text-white font-medium shadow-md">Update Stock</button>
+                    </form>
+                </div>
+            `;
+
+            // Attach form handler
+            setTimeout(() => {
+                const form = document.getElementById('stock-form');
+                if (form) {
+                    form.addEventListener('submit', handleStockUpdate);
+                }
+            }, 100);
+        }
+
+        async function handleStockUpdate(e) {
+            e.preventDefault();
+            const itemId = document.getElementById('stock-item').value;
+            const quantity = parseInt(document.getElementById('stock-quantity').value);
+
+            if (!itemId) {
+                showToast('Please select an item', 'error');
+                return;
+            }
+            if (!quantity || quantity <= 0) {
+                showToast('Please enter a valid quantity', 'error');
+                return;
+            }
+
+            try {
+                await api(`/inventory/${itemId}/add`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ quantity }),
+                });
+
+                showToast('Stock updated successfully!');
+                renderPage('inventory');
+            } catch (error) {
+                showToast(error.message || 'Failed to update stock', 'error');
+            }
+        }
+
+        async function handleAddStockQuick(itemId, itemName) {
+            const quantity = prompt(`Enter quantity to add for ${itemName}:`);
+            if (!quantity || parseInt(quantity) <= 0) return;
+
+            try {
+                await api(`/inventory/${itemId}/add`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ quantity: parseInt(quantity) }),
+                });
+
+                showToast(`Added ${quantity} to ${itemName}`);
+                renderPage('inventory');
+            } catch (error) {
+                showToast(error.message || 'Failed to update stock', 'error');
+            }
+        }
+
+        // --- REPORTS PAGE ---
+        async function loadReports(container) {
+            try {
+                const isOfficer = state.user?.role === 'govt_officer';
+                let comparisonData = null;
+
+                if (isOfficer) {
+                    try {
+                        const compRes = await api('/schools/comparison');
+                        comparisonData = compRes.data;
+                    } catch (e) { /* Officer-only endpoint */ }
+                }
+
+                const reportsRes = await api('/reports');
+                container.innerHTML = getReportsHTML(reportsRes.data, comparisonData);
+                lucide.createIcons();
+
+                if (comparisonData) {
+                    initReportCharts(comparisonData);
+                } else {
+                    // Show placeholder chart for school admins
+                    initReportChartsDefault();
+                }
+            } catch (error) {
+                container.innerHTML = `<div class="text-center py-20 text-poshan-500"><p>Failed to load reports.</p><p class="text-sm mt-2">${error.message}</p></div>`;
+            }
+        }
+
+        function getReportsHTML(reports, comparisonData) {
+            const latestReport = reports.length > 0 ? reports[0] : null;
+            const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+            return `
+                <div class="space-y-6">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="lg:col-span-2 glass-card p-6 rounded-2xl">
+                            <h4 class="font-serif text-xl text-poshan-900 mb-6">${comparisonData ? 'Comparative Analysis (Schools)' : 'Attendance Overview'}</h4>
+                            <canvas id="comparisonChart" height="200"></canvas>
+                        </div>
+                        <div class="glass-card p-6 rounded-2xl flex flex-col justify-center items-center text-center space-y-6">
+                            <div class="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center text-red-600">
+                                <i data-lucide="file-text" class="w-10 h-10"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-serif text-xl text-poshan-900">Monthly Report</h3>
+                                <p class="text-sm text-poshan-500 mt-2">${latestReport ? `${monthNames[latestReport.month]} ${latestReport.year}` : 'No reports yet'}</p>
+                            </div>
+                            ${state.user?.role === 'school_admin' ? `
+                            <button onclick="generateReport()" class="btn-primary w-full py-3 rounded-xl text-white shadow-md flex items-center justify-center gap-2">
+                                <i data-lucide="file-plus" class="w-4 h-4"></i> Generate Report
+                            </button>` : ''}
+                            ${latestReport ? `
+                            <button onclick="downloadReport('${latestReport._id}')" class="btn-primary w-full py-3 rounded-xl text-white shadow-md flex items-center justify-center gap-2">
+                                <i data-lucide="download" class="w-4 h-4"></i> Download PDF
+                            </button>` : ''}
+                            ${reports.length > 1 ? `
+                            <div class="w-full border-t border-poshan-100 pt-4">
+                                <p class="text-xs text-poshan-500 font-bold uppercase mb-2">Archive</p>
+                                ${reports.slice(1, 6).map(r => `
+                                    <button onclick="downloadReport('${r._id}')" class="w-full text-left text-sm text-poshan-600 hover:text-poshan-900 py-1 flex justify-between">
+                                        <span>${monthNames[r.month]} ${r.year}</span>
+                                        <i data-lucide="download" class="w-3 h-3"></i>
+                                    </button>
+                                `).join('')}
+                            </div>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function generateReport() {
+            const now = new Date();
+            const month = now.getMonth() + 1; // current month
+            const year = now.getFullYear();
+
+            try {
+                showToast('Generating report...', 'info');
+                await api('/reports/generate', {
+                    method: 'POST',
+                    body: JSON.stringify({ month, year }),
+                });
+                showToast('Report generated successfully!');
+                renderPage('reports');
+            } catch (error) {
+                showToast(error.message || 'Failed to generate report', 'error');
+            }
+        }
+
+        async function downloadReport(id) {
+            try {
+                const url = `${API_BASE}/reports/${id}/download`;
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', '');
+
+                // Need to use fetch with auth header for protected downloads
+                const res = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${state.token}` },
+                });
+
+                if (!res.ok) throw new Error('Download failed');
+
+                const blob = await res.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                link.href = blobUrl;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(blobUrl);
+
+                showToast('Report downloaded!');
+            } catch (error) {
+                showToast(error.message || 'Failed to download', 'error');
+            }
+        }
+
+        async function handleExportData() {
+            // Export current page data
+            try {
+                const reportsRes = await api('/reports');
+                if (reportsRes.data.length > 0) {
+                    await downloadReport(reportsRes.data[0]._id);
+                } else {
+                    showToast('No reports available to export. Generate one first.', 'info');
+                }
+            } catch (error) {
+                showToast('Export not available', 'error');
+            }
+        }
+
+        // --- HELPER FUNCTIONS ---
+
+        function updateDate() {
+            const options = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' };
+            const today = new Date().toLocaleDateString('en-US', options);
+            if (document.getElementById('current-date')) {
+                document.getElementById('current-date').textContent = today;
+            }
+        }
+
+        function getTimeAgo(dateStr) {
+            const now = new Date();
+            const date = new Date(dateStr);
+            const diffMs = now - date;
+            const diffMins = Math.round(diffMs / 60000);
+
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins} mins ago`;
+            if (diffMins < 1440) return `${Math.round(diffMins / 60)} hours ago`;
+            if (diffMins < 10080) return `${Math.round(diffMins / 1440)} days ago`;
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+
+        // --- CHART CONFIGS ---
+
+        function initDashboardCharts(trend) {
+            const ctx = document.getElementById('attendanceChart');
+            if (!ctx) return;
+
+            const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, 'rgba(234, 88, 12, 0.2)');
+            gradient.addColorStop(1, 'rgba(234, 88, 12, 0)');
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: trend.labels,
+                    datasets: [{
+                        label: 'Avg Students Fed',
+                        data: trend.values,
+                        borderColor: '#EA580C',
+                        backgroundColor: gradient,
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: '#FFF',
+                        pointBorderColor: '#EA580C',
+                        pointBorderWidth: 2,
+                        pointRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            grid: { color: 'rgba(0,0,0,0.05)' }
+                        },
+                        x: {
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        function initReportCharts(comparisonData) {
+            const ctx = document.getElementById('comparisonChart');
+            if (!ctx) return;
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: comparisonData.labels,
+                    datasets: [{
+                        label: 'Meal Compliance (%)',
+                        data: comparisonData.values,
+                        backgroundColor: comparisonData.values.map((_, i) =>
+                            i % 2 === 0 ? '#F97316' : '#FDBA74'
+                        ),
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            grid: { color: 'rgba(0,0,0,0.05)' }
+                        },
+                        x: {
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        function initReportChartsDefault() {
+            const ctx = document.getElementById('comparisonChart');
+            if (!ctx) return;
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['This Week', 'Last Week', '2 Weeks Ago', '3 Weeks Ago'],
+                    datasets: [{
+                        label: 'Avg Attendance',
+                        data: [0, 0, 0, 0],
+                        backgroundColor: ['#F97316', '#FDBA74', '#F97316', '#FDBA74'],
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(0,0,0,0.05)' }
+                        },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+
+</html>
