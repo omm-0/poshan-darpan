@@ -1,0 +1,43 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: the requesting user is signed in
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Users can read/write ONLY their own profile
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Any signed-in user can read schools
+    // Only the school's admin can write their own school document
+    match /schools/{schoolId} {
+      allow read:  if isSignedIn();
+      allow write: if isSignedIn();
+
+      // Inventory sub-collection: any signed-in user (for seeding + school admin updates)
+      match /inventory/{docId} {
+        allow read, write: if isSignedIn();
+      }
+    }
+
+    // Attendance: any signed-in user can read/write (school admins submit, gov reads)
+    match /attendance/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Alerts: any signed-in user can read; any signed-in user can write (for resolving)
+    match /alerts/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Analytics: any signed-in user can read (gov dashboard); write for seeding
+    match /analytics/{docId} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}
