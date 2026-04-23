@@ -1,0 +1,114 @@
+/* ─── Sidebar user ───────────────────────────────────────────────────────── */
+.sidebar-user {
+  padding: 0.75rem 0;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.sidebar-user-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-user-role {
+  font-size: 0.75rem;
+  color: var(--text-sidebar);
+  margin-top: 0.15rem;
+}
+
+/* ─── Alert badge ────────────────────────────────────────────────────────── */
+.alert-badge {
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  margin-left: auto;
+}
+
+/* ─── Profile rows ───────────────────────────────────────────────────────── */
+.profile-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+  gap: 1rem;
+}
+.profile-row:last-child { border-bottom: none; }
+.profile-label {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+/* ─── School table stock cells ───────────────────────────────────────────── */
+.stock-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 90px;
+}
+.stock-mini-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+  min-width: 50px;
+}
+.stock-mini-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.5s ease;
+}
+
+/* ─── Modal school detail ────────────────────────────────────────────────── */
+.modal-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.modal-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.modal-detail-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.modal-detail-val {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.modal-mini-chart { height: 140px; }
+
+/* ─── Date range filter tabs ─────────────────────────────────────────────── */
+#section-analytics .filter-tab { cursor: pointer; }
+
+/* ─── Gov read-only notice ───────────────────────────────────────────────── */
+.readonly-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--primary-light);
+  border: 1px solid #BFDBFE;
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.875rem;
+  font-size: 0.82rem;
+  color: var(--primary);
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 768px) {
+  .modal-detail-grid { grid-template-columns: 1fr; }
+}

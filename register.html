@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Register — Poshan Darpan</title>
+  <link rel="stylesheet" href="css/global.css" />
+  <link rel="stylesheet" href="css/auth.css" />
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/bold/style.css" />
+</head>
+<body>
+  <div id="toast-container"></div>
+
+  <main class="auth-page">
+    <div class="auth-card wide" id="register-card">
+      <!-- Loading overlay -->
+      <div class="auth-spinner-overlay" id="spinner">
+        <div class="spinner"></div>
+        <p>Creating your account…</p>
+      </div>
+
+      <!-- Logo -->
+      <div class="auth-logo">
+        <div class="auth-logo-icon">
+          <i class="ph-bold ph-bowl-food"></i>
+        </div>
+        <h1>Create Account</h1>
+        <p class="tagline">Join Poshan Darpan — Nutrition Mirror</p>
+      </div>
+
+      <!-- Form -->
+      <form class="auth-form" id="register-form" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="name">Full Name</label>
+          <input
+            type="text"
+            id="name"
+            class="form-control"
+            placeholder="e.g. Ramesh Kumar"
+            autocomplete="name"
+            required
+          />
+          <span class="form-error" id="name-error"></span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="email">Email Address</label>
+          <input
+            type="email"
+            id="email"
+            class="form-control"
+            placeholder="you@example.com"
+            autocomplete="email"
+            required
+          />
+          <span class="form-error" id="email-error"></span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <div class="pwd-wrap">
+            <input
+              type="password"
+              id="password"
+              class="form-control"
+              placeholder="Min. 6 characters"
+              autocomplete="new-password"
+              required
+            />
+            <span class="pwd-toggle" id="toggle-pwd">
+              <i class="ph-bold ph-eye" id="toggle-pwd-icon"></i>
+            </span>
+          </div>
+          <span class="form-error" id="password-error"></span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="confirm-password">Confirm Password</label>
+          <input
+            type="password"
+            id="confirm-password"
+            class="form-control"
+            placeholder="Re-enter password"
+            autocomplete="new-password"
+            required
+          />
+          <span class="form-error" id="confirm-error"></span>
+        </div>
+
+        <!-- Role Selection -->
+        <div class="form-group">
+          <label class="form-label">Select Role</label>
+          <div class="role-select-wrap">
+            <label class="role-option" id="role-school-label">
+              <input type="radio" name="role" value="school" id="role-school" />
+              <i class="ph-bold ph-chalkboard-teacher"></i>
+              <span>School Admin</span>
+            </label>
+            <label class="role-option" id="role-gov-label">
+              <input type="radio" name="role" value="government" id="role-gov" />
+              <i class="ph-bold ph-buildings"></i>
+              <span>Government Official</span>
+            </label>
+          </div>
+          <span class="form-error" id="role-error"></span>
+        </div>
+
+        <!-- School selector (shown if role=school) -->
+        <div class="form-group conditional-field" id="school-field">
+          <label class="form-label" for="school-select">Assigned School</label>
+          <select id="school-select" class="form-control">
+            <option value="">— Select School —</option>
+          </select>
+          <span class="form-error" id="school-error"></span>
+        </div>
+
+        <!-- District field (shown if role=government) -->
+        <div class="form-group conditional-field" id="district-field">
+          <label class="form-label" for="district">District / State</label>
+          <input
+            type="text"
+            id="district"
+            class="form-control"
+            placeholder="e.g. Madhya Pradesh"
+          />
+          <span class="form-error" id="district-error"></span>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-full" id="register-btn">
+          <i class="ph-bold ph-user-plus"></i>
+          Create Account
+        </button>
+      </form>
+
+      <div class="auth-footer">
+        Already have an account? <a href="index.html">Login here</a>
+      </div>
+    </div>
+  </main>
+
+  <script type="module" src="js/auth.js"></script>
+</body>
+</html>

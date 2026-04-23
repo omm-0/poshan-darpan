@@ -1,884 +1,373 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Govt Analytics | Poshan Darpan</title>
-    <!-- Firebase Compat SDK — works on file:// and any server, no ES modules -->
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <!-- UI -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;600;800&family=Epilogue:wght@400;500;600&display=swap"
-        rel="stylesheet">
-    <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0
-        }
-
-        body {
-            font-family: 'Epilogue', sans-serif;
-            background: #0F172A;
-            color: #e2e8f0;
-            display: flex;
-            min-height: 100dvh
-        }
-
-        h1,
-        h2,
-        h3,
-        h4 {
-            font-family: 'Bricolage Grotesque', sans-serif
-        }
-
-        /* Loading */
-        #appLoader {
-            position: fixed;
-            inset: 0;
-            background: #0F172A;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 9999;
-            gap: .875rem
-        }
-
-        /* Sidebar */
-        #sidebar {
-            width: 232px;
-            background: #1e293b;
-            border-right: 1px solid rgba(255, 255, 255, .06);
-            padding: 1.5rem .875rem;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            min-height: 100dvh;
-            position: sticky;
-            top: 0;
-            flex-shrink: 0
-        }
-
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: .625rem;
-            padding: .625rem .875rem;
-            border-radius: .625rem;
-            font-size: .85rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all .2s;
-            color: #94a3b8;
-            background: none;
-            border: none;
-            width: 100%;
-            text-align: left;
-            font-family: 'Epilogue', sans-serif
-        }
-
-        .nav-item:hover {
-            color: white;
-            background: rgba(255, 255, 255, .06)
-        }
-
-        .nav-item.on {
-            color: #fb923c;
-            background: rgba(251, 146, 60, .12)
-        }
-
-        .badge {
-            margin-left: auto;
-            background: #ef4444;
-            color: white;
-            border-radius: 999px;
-            font-size: .65rem;
-            font-weight: 700;
-            padding: 1px 7px;
-            display: none
-        }
-
-        /* Main content */
-        #content {
-            flex: 1;
-            overflow: auto
-        }
-
-        .page {
-            display: none;
-            padding: 2rem
-        }
-
-        .page.active {
-            display: block;
-            animation: fadeIn .3s ease
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(6px)
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0)
-            }
-        }
-
-        /* Cards */
-        .card {
-            background: #1e293b;
-            border-radius: 1rem;
-            padding: 1.5rem;
-            border: 1px solid rgba(255, 255, 255, .06)
-        }
-
-        .kpi {
-            background: #1e293b;
-            border-radius: 1rem;
-            padding: 1.5rem;
-            border: 1px solid rgba(255, 255, 255, .06)
-        }
-
-        /* Form controls */
-        .inp {
-            width: 100%;
-            background: #0F172A;
-            border: 1px solid rgba(255, 255, 255, .1);
-            border-radius: .625rem;
-            padding: .625rem .875rem;
-            font-size: .85rem;
-            font-family: 'Epilogue', sans-serif;
-            color: #e2e8f0;
-            outline: none;
-            transition: border .2s
-        }
-
-        .inp:focus {
-            border-color: #fb923c
-        }
-
-        .btn {
-            background: #EA580C;
-            color: white;
-            border: none;
-            border-radius: .625rem;
-            padding: .75rem 1.25rem;
-            font-weight: 700;
-            font-size: .85rem;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: .5rem;
-            transition: background .2s;
-            font-family: 'Epilogue', sans-serif
-        }
-
-        .btn:hover {
-            background: #c24106
-        }
-
-        /* Table */
-        .tbl {
-            width: 100%;
-            border-collapse: collapse;
-            min-width: 520px
-        }
-
-        .tbl th {
-            font-size: .7rem;
-            font-weight: 700;
-            color: #475569;
-            text-transform: uppercase;
-            letter-spacing: .08em;
-            padding: .75rem 1rem;
-            text-align: left;
-            border-bottom: 1px solid rgba(255, 255, 255, .06)
-        }
-
-        .tbl td {
-            padding: .875rem 1rem;
-            font-size: .85rem;
-            border-bottom: 1px solid rgba(255, 255, 255, .04);
-            color: #cbd5e1
-        }
-
-        .tbl tr:hover td {
-            background: rgba(255, 255, 255, .03)
-        }
-
-        /* Alert items */
-        .alert-item {
-            background: #1e293b;
-            border-radius: .875rem;
-            padding: 1.25rem;
-            border-left: 3px solid #64748b;
-            display: flex;
-            align-items: flex-start;
-            gap: 1rem;
-            margin-bottom: .75rem
-        }
-
-        .alert-item.critical {
-            border-left-color: #ef4444
-        }
-
-        .alert-item.warning {
-            border-left-color: #f59e0b
-        }
-
-        .alert-item.info {
-            border-left-color: #3b82f6
-        }
-
-        /* Skeletons */
-        .sk {
-            background: linear-gradient(90deg, #1e293b 25%, #293548 50%, #1e293b 75%);
-            background-size: 200% 100%;
-            animation: sk 1.4s infinite;
-            border-radius: .5rem
-        }
-
-        @keyframes sk {
-            0% {
-                background-position: -200% 0
-            }
-
-            100% {
-                background-position: 200% 0
-            }
-        }
-
-        /* Toast */
-        #toast {
-            position: fixed;
-            bottom: 1.5rem;
-            right: 1.5rem;
-            color: white;
-            padding: .875rem 1.25rem;
-            border-radius: .875rem;
-            display: flex;
-            align-items: center;
-            gap: .625rem;
-            font-size: .85rem;
-            font-weight: 600;
-            z-index: 9999;
-            transform: translateY(150%);
-            transition: transform .3s cubic-bezier(.16, 1, .3, 1);
-            box-shadow: 0 8px 28px -4px rgba(0, 0, 0, .4);
-            max-width: 320px
-        }
-
-        #toast.show {
-            transform: translateY(0)
-        }
-
-        /* Mobile header */
-        #mobileHeader {
-            display: none;
-            background: #1e293b;
-            border-bottom: 1px solid rgba(255, 255, 255, .06);
-            padding: .875rem 1.25rem;
-            position: sticky;
-            top: 0;
-            z-index: 40;
-            align-items: center;
-            justify-content: space-between
-        }
-
-        @media(max-width:900px) {
-            #sidebar {
-                display: none !important
-            }
-
-            #mobileHeader {
-                display: flex !important
-            }
-
-            .page {
-                padding: 1.25rem
-            }
-        }
-
-        @media(max-width:600px) {
-            .kpi-grid {
-                grid-template-columns: 1fr 1fr !important
-            }
-
-            .chart-grid {
-                grid-template-columns: 1fr !important
-            }
-
-            .inv-grid {
-                grid-template-columns: 1fr !important
-            }
-        }
-
-        @keyframes spin {
-            to {
-                transform: rotate(360deg)
-            }
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Government Dashboard — Poshan Darpan</title>
+  <link rel="stylesheet" href="css/global.css" />
+  <link rel="stylesheet" href="css/gov-dashboard.css" />
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/bold/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-
 <body>
+  <!-- Full-page loading overlay: shown by default, hidden after auth check passes -->
+  <div class="page-loading" id="page-loading">
+    <div class="spinner"></div>
+    <p>Loading…</p>
+  </div>
 
-    <!-- Loading -->
-    <div id="appLoader">
-        <div
-            style="width:52px;height:52px;background:#EA580C;border-radius:1rem;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px -4px rgba(234,88,12,.5)">
-            <i class="ph ph-trend-up" style="color:white;font-size:1.75rem"></i>
-        </div>
-        <p style="color:#475569;font-size:.875rem">Authenticating...</p>
+  <div id="toast-container"></div>
+
+  <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Menu">
+    <i class="ph-bold ph-list"></i>
+  </button>
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+  <!-- School Detail Modal -->
+  <div class="modal-backdrop" id="school-modal-backdrop">
+    <div class="modal" id="school-modal">
+      <div class="modal-header">
+        <h3 id="modal-school-name">School Details</h3>
+        <button class="modal-close" id="modal-close"><i class="ph-bold ph-x"></i></button>
+      </div>
+      <div class="modal-body" id="modal-body">
+        <div class="skeleton-row"><div class="skeleton"></div></div>
+      </div>
     </div>
+  </div>
 
-    <!-- Sidebar -->
-    <aside id="sidebar">
-        <div>
-            <div style="display:flex;align-items:center;gap:.75rem;padding:.5rem .875rem;margin-bottom:2rem">
-                <div
-                    style="width:2rem;height:2rem;background:#EA580C;border-radius:.5rem;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                    <i class="ph ph-trend-up" style="color:white;font-size:1rem"></i>
-                </div>
-                <span
-                    style="font-weight:800;font-size:1.05rem;color:white;font-family:'Bricolage Grotesque',sans-serif">Poshan<span
-                        style="color:#fb923c"> Darpan</span></span>
-            </div>
-            <nav style="display:flex;flex-direction:column;gap:.25rem">
-                <button class="nav-item on" onclick="goPage('analytics')" data-p="analytics"><i
-                        class="ph ph-squares-four" style="font-size:1.1rem"></i>Master Analytics</button>
-                <button class="nav-item" onclick="goPage('registry')" data-p="registry"><i class="ph ph-buildings"
-                        style="font-size:1.1rem"></i>School Registry</button>
-                <button class="nav-item" onclick="goPage('alerts')" data-p="alerts"><i class="ph ph-warning-circle"
-                        style="font-size:1.1rem"></i>Alerts<span class="badge" id="alertBadge">0</span></button>
-                <button class="nav-item" onclick="goPage('reports')" data-p="reports"><i class="ph ph-file-pdf"
-                        style="font-size:1.1rem"></i>Reports</button>
-            </nav>
+  <div class="app-layout">
+    <!-- ── Sidebar ─────────────────────────────────────────────────── -->
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-text">Poshan Darpan</div>
+        <div class="logo-sub">Government Analytics</div>
+      </div>
+
+      <ul class="sidebar-nav" id="nav-links">
+        <li class="nav-item active" data-section="overview">
+          <i class="ph-bold ph-chart-pie"></i>
+          <span>Overview</span>
+        </li>
+        <li class="nav-item" data-section="schools">
+          <i class="ph-bold ph-buildings"></i>
+          <span>Schools</span>
+        </li>
+        <li class="nav-item" data-section="analytics">
+          <i class="ph-bold ph-chart-line"></i>
+          <span>Analytics</span>
+        </li>
+        <li class="nav-item" data-section="alerts">
+          <i class="ph-bold ph-warning"></i>
+          <span>Alerts</span>
+          <span class="alert-badge" id="nav-alert-count" style="display:none"></span>
+        </li>
+        <li class="nav-item" data-section="profile">
+          <i class="ph-bold ph-user-circle"></i>
+          <span>Profile</span>
+        </li>
+      </ul>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-user">
+          <div class="sidebar-user-name" id="sidebar-username">—</div>
+          <div class="sidebar-user-role">Government Official</div>
         </div>
-        <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:.875rem">
-            <div style="display:flex;align-items:center;gap:.625rem;padding:.5rem .875rem;margin-bottom:.375rem">
-                <div id="sideAvatar"
-                    style="width:2rem;height:2rem;border-radius:50%;background:#EA580C;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.75rem;color:white;flex-shrink:0">
-                    –</div>
-                <div>
-                    <p style="font-size:.8rem;font-weight:700;color:white" id="sideName">–</p>
-                    <p style="font-size:.68rem;color:#fb923c">Nodal Officer</p>
-                </div>
-            </div>
-            <button id="logoutBtn" class="nav-item" style="color:#f87171"><i class="ph ph-sign-out"
-                    style="font-size:1.1rem"></i>Logout</button>
-        </div>
-    </aside>
+        <button class="btn-logout" id="logout-btn">
+          <i class="ph-bold ph-sign-out"></i>
+          Logout
+        </button>
+      </div>
+    </nav>
 
-    <!-- Mobile top bar -->
-    <div id="mobileHeader">
-        <span style="font-weight:800;font-size:1rem;color:white;font-family:'Bricolage Grotesque',sans-serif">Poshan
-            <span style="color:#fb923c">Darpan</span></span>
-        <select onchange="goPage(this.value)"
-            style="background:#0F172A;border:1px solid rgba(255,255,255,.1);color:#e2e8f0;border-radius:.5rem;padding:.375rem .625rem;font-size:.8rem;outline:none">
-            <option value="analytics">Analytics</option>
-            <option value="registry">Registry</option>
-            <option value="alerts">Alerts</option>
-            <option value="reports">Reports</option>
-        </select>
-    </div>
+    <!-- ── Main Content ────────────────────────────────────────────── -->
+    <main class="main-content">
 
-    <!-- Content -->
-    <div id="content">
-
-        <!-- ════ PAGE: ANALYTICS ════ -->
-        <div id="page-analytics" class="page active">
-            <h2 style="font-size:1.625rem;font-weight:800;color:white;margin-bottom:.25rem">State Overview</h2>
-            <p style="color:#64748b;font-size:.875rem;margin-bottom:1.5rem" id="anaSubtitle">Loading live data...</p>
-
-            <div class="kpi-grid"
-                style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.25rem">
-                <div class="kpi">
-                    <p
-                        style="font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.5rem">
-                        Beneficiaries</p>
-                    <h3 style="font-size:2.25rem;font-weight:900;color:white" id="kpiBenef">–</h3>
-                    <p style="font-size:.72rem;color:#22c55e;margin-top:.375rem;font-weight:600">● Live</p>
-                </div>
-                <div class="kpi">
-                    <p
-                        style="font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.5rem">
-                        Avg Attendance</p>
-                    <h3 style="font-size:2.25rem;font-weight:900;color:white" id="kpiAtt">–</h3>
-                    <p style="font-size:.72rem;color:#64748b;margin-top:.375rem">Target: 90%</p>
-                </div>
-                <div class="kpi" style="border-top:2px solid #ef4444">
-                    <p
-                        style="font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.5rem">
-                        Active Alerts</p>
-                    <h3 style="font-size:2.25rem;font-weight:900" id="kpiAlerts">–</h3>
-                    <button onclick="goPage('alerts')"
-                        style="font-size:.72rem;color:#fb923c;background:none;border:none;cursor:pointer;margin-top:.375rem;font-weight:600;font-family:'Epilogue',sans-serif">View
-                        alerts →</button>
-                </div>
-                <div class="kpi">
-                    <p
-                        style="font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.5rem">
-                        Schools</p>
-                    <h3 style="font-size:2.25rem;font-weight:900;color:white" id="kpiSchools">–</h3>
-                    <button onclick="goPage('registry')"
-                        style="font-size:.72rem;color:#fb923c;background:none;border:none;cursor:pointer;margin-top:.375rem;font-weight:600;font-family:'Epilogue',sans-serif">View
-                        registry →</button>
-                </div>
-            </div>
-
-            <div class="chart-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-                <div class="card">
-                    <h3 style="font-size:.95rem;font-weight:700;color:white;margin-bottom:1rem">Monthly Meals Served vs
-                        Target</h3>
-                    <div style="position:relative;height:210px"><canvas id="barChart"></canvas></div>
-                </div>
-                <div class="card">
-                    <h3 style="font-size:.95rem;font-weight:700;color:white;margin-bottom:1rem">District Performance
-                    </h3>
-                    <div style="position:relative;height:210px"><canvas id="radarChart"></canvas></div>
-                </div>
-            </div>
+      <!-- ══ OVERVIEW ══════════════════════════════════════════════ -->
+      <section class="page-section active" id="section-overview">
+        <div class="page-header">
+          <h2>Government Overview</h2>
+          <p>Centralized view of all school meal programs</p>
         </div>
 
-        <!-- ════ PAGE: REGISTRY ════ -->
-        <div id="page-registry" class="page">
-            <h2 style="font-size:1.625rem;font-weight:800;color:white;margin-bottom:.25rem">School Registry</h2>
-            <p style="color:#64748b;font-size:.875rem;margin-bottom:1.5rem">Real-time view of all integrated schools.
-            </p>
-
-            <div class="card">
-                <div style="display:flex;flex-wrap:wrap;gap:.75rem;margin-bottom:1.25rem">
-                    <div style="position:relative;flex:1;min-width:180px">
-                        <i class="ph ph-magnifying-glass"
-                            style="position:absolute;left:.75rem;top:50%;transform:translateY(-50%);color:#475569;font-size:1rem"></i>
-                        <input type="text" id="schoolSearch" class="inp" placeholder="Search school name or ID..."
-                            style="padding-left:2.25rem" oninput="filterSchools()">
-                    </div>
-                    <select id="districtFilter" class="inp" style="width:auto;flex-shrink:0" onchange="filterSchools()">
-                        <option value="">All Districts</option>
-                    </select>
-                    <button class="btn" onclick="exportCSV()"><i class="ph ph-file-csv"></i> Export CSV</button>
-                </div>
-                <div style="overflow-x:auto">
-                    <table class="tbl">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>School Name</th>
-                                <th>District</th>
-                                <th>Enrolled</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="registryBody">
-                            <tr>
-                                <td colspan="5" style="text-align:center;padding:3rem;color:#475569">
-                                    <i class="ph ph-spinner-gap"
-                                        style="font-size:1.5rem;display:block;margin:0 auto .5rem;animation:spin 1s linear infinite"></i>Loading...
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <p style="font-size:.8rem;color:#475569;margin-top:.875rem;padding-top:.875rem;border-top:1px solid rgba(255,255,255,.06)"
-                    id="schoolCount">–</p>
+        <!-- Top KPI cards -->
+        <div class="kpi-grid" style="margin-bottom:1.5rem">
+          <div class="kpi-card">
+            <div class="kpi-icon blue"><i class="ph-bold ph-buildings"></i></div>
+            <div class="kpi-info">
+              <div class="kpi-value" id="kpi-schools">—</div>
+              <div class="kpi-label">Active Schools</div>
             </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon green"><i class="ph-bold ph-student"></i></div>
+            <div class="kpi-info">
+              <div class="kpi-value" id="kpi-students">—</div>
+              <div class="kpi-label">Total Students Enrolled</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon yellow"><i class="ph-bold ph-fork-knife"></i></div>
+            <div class="kpi-info">
+              <div class="kpi-value" id="kpi-meals-today">—</div>
+              <div class="kpi-label">Meals Served Today</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon red"><i class="ph-bold ph-warning"></i></div>
+            <div class="kpi-info">
+              <div class="kpi-value" id="kpi-active-alerts">—</div>
+              <div class="kpi-label">Active Alerts</div>
+            </div>
+          </div>
         </div>
 
-        <!-- ════ PAGE: ALERTS ════ -->
-        <div id="page-alerts" class="page">
-            <div
-                style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:1rem;margin-bottom:1.5rem">
-                <div>
-                    <h2 style="font-size:1.625rem;font-weight:800;color:white">
-                        Compliance Alerts
-                        <span id="alertCountBadge"
-                            style="display:none;background:#ef4444;color:white;font-size:.875rem;padding:2px 10px;border-radius:999px;margin-left:.5rem;font-family:'Epilogue',sans-serif;font-weight:700">0</span>
-                    </h2>
-                    <p style="color:#64748b;font-size:.875rem;margin-top:.25rem">Schools with low stock or reporting
-                        issues.</p>
-                </div>
-                <button class="btn" onclick="markAllResolved()"><i class="ph ph-check-double"></i> Mark All
-                    Resolved</button>
+        <!-- Charts Row -->
+        <div class="grid-2" style="margin-bottom:1.5rem">
+          <div class="chart-card">
+            <h3>Attendance Trend (Last 7 Days)</h3>
+            <div class="chart-wrap">
+              <canvas id="ov-attendance-chart"></canvas>
             </div>
-            <div id="alertsContainer">
-                <div class="alert-item critical">
-                    <div class="sk" style="width:2.5rem;height:2.5rem;border-radius:50%;flex-shrink:0"></div>
-                    <div style="flex:1">
-                        <div class="sk" style="height:.875rem;width:45%;margin-bottom:.5rem"></div>
-                        <div class="sk" style="height:.75rem;width:75%"></div>
-                    </div>
-                </div>
-                <div class="alert-item warning">
-                    <div class="sk" style="width:2.5rem;height:2.5rem;border-radius:50%;flex-shrink:0"></div>
-                    <div style="flex:1">
-                        <div class="sk" style="height:.875rem;width:60%;margin-bottom:.5rem"></div>
-                        <div class="sk" style="height:.75rem;width:88%"></div>
-                    </div>
-                </div>
+          </div>
+          <div class="chart-card">
+            <h3>Meal Distribution (Last 30 Days)</h3>
+            <div class="chart-wrap">
+              <canvas id="ov-meal-pie-chart"></canvas>
             </div>
+          </div>
         </div>
 
-        <!-- ════ PAGE: REPORTS ════ -->
-        <div id="page-reports" class="page">
-            <h2 style="font-size:1.625rem;font-weight:800;color:white;margin-bottom:.25rem">Generate Reports</h2>
-            <p style="color:#64748b;font-size:.875rem;margin-bottom:1.5rem">Export data for government audits.</p>
-
-            <div class="inv-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-                <div class="card">
-                    <h3 style="font-size:.95rem;font-weight:700;color:white;margin-bottom:1.25rem">Configuration</h3>
-                    <div style="display:flex;flex-direction:column;gap:.875rem">
-                        <div>
-                            <label
-                                style="display:block;font-size:.75rem;font-weight:600;color:#64748b;margin-bottom:.375rem">Report
-                                Type</label>
-                            <select class="inp">
-                                <option>School Registry Export</option>
-                                <option>Attendance Summary</option>
-                                <option>Inventory Status</option>
-                            </select>
-                        </div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
-                            <div><label
-                                    style="display:block;font-size:.75rem;font-weight:600;color:#64748b;margin-bottom:.375rem">From</label><input
-                                    type="date" class="inp"></div>
-                            <div><label
-                                    style="display:block;font-size:.75rem;font-weight:600;color:#64748b;margin-bottom:.375rem">To</label><input
-                                    type="date" class="inp"></div>
-                        </div>
-                        <button class="btn" onclick="exportCSV()" style="margin-top:.375rem"><i
-                                class="ph ph-file-csv"></i> Export CSV</button>
-                    </div>
-                </div>
-                <div class="card">
-                    <h3 style="font-size:.95rem;font-weight:700;color:white;margin-bottom:1rem">Live Summary</h3>
-                    <div id="reportSummary">
-                        <div class="sk" style="height:3rem;margin-bottom:.625rem"></div>
-                        <div class="sk" style="height:3rem;margin-bottom:.625rem"></div>
-                        <div class="sk" style="height:3rem;margin-bottom:.625rem"></div>
-                        <div class="sk" style="height:3rem"></div>
-                    </div>
-                </div>
-            </div>
+        <!-- Inventory Health -->
+        <div class="chart-card" style="margin-bottom:1.5rem">
+          <h3>School Inventory Health</h3>
+          <div class="chart-wrap" style="height:300px">
+            <canvas id="ov-inventory-chart"></canvas>
+          </div>
         </div>
 
-    </div><!-- /content -->
+        <!-- Recent Alerts Feed -->
+        <div class="card">
+          <h3 style="margin-bottom:1rem;font-size:0.95rem">Recent Alerts (All Schools)</h3>
+          <div id="ov-alerts-feed">
+            <div class="skeleton-row"><div class="skeleton"></div></div>
+            <div class="skeleton-row"><div class="skeleton"></div></div>
+          </div>
+        </div>
+      </section>
 
-    <!-- Toast -->
-    <div id="toast">
-        <i class="ph ph-check-circle" style="font-size:1.25rem;flex-shrink:0" id="toastIco"></i>
-        <span id="toastTxt"></span>
-    </div>
+      <!-- ══ SCHOOLS ═══════════════════════════════════════════════ -->
+      <section class="page-section" id="section-schools">
+        <div class="page-header">
+          <h2>Schools</h2>
+          <p>All schools and their real-time inventory status</p>
+        </div>
 
-    <script>
-        firebase.initializeApp({
-            apiKey: "AIzaSyBRzYpEHR6rPhIlfkBssPxR03zFI5GJBB8",
-            authDomain: "poshan-darpan.firebaseapp.com",
-            projectId: "poshan-darpan",
-            storageBucket: "poshan-darpan.firebasestorage.app",
-            messagingSenderId: "355897523524",
-            appId: "1:355897523524:web:4ece8290d6d55f1bf82b11"
-        });
-        var auth = firebase.auth();
-        var db = firebase.firestore();
+        <!-- Filters -->
+        <div class="filter-bar" style="margin-bottom:1rem">
+          <div class="search-input-wrap">
+            <i class="ph-bold ph-magnifying-glass"></i>
+            <input type="text" class="form-control" id="school-search" placeholder="Search schools…" />
+          </div>
+          <select class="form-control" id="district-filter" style="max-width:180px">
+            <option value="">All Districts</option>
+          </select>
+          <select class="form-control" id="status-filter" style="max-width:150px">
+            <option value="">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+          <select class="form-control" id="sort-filter" style="max-width:180px">
+            <option value="name">Sort by Name</option>
+            <option value="enrollment">Sort by Enrollment</option>
+            <option value="stock">Sort by Stock Level</option>
+          </select>
+        </div>
 
-        var allSchools = [];
-        var allAlerts = [];
-        var barChart = null;
-        var radarChart = null;
-        var authChecked = false;
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>School Name</th>
+                <th>District</th>
+                <th>Enrollment</th>
+                <th>Rice %</th>
+                <th>Wheat %</th>
+                <th>Dal %</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="schools-tbody">
+              <tr><td colspan="8" class="table-empty">Loading schools…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-        Chart.defaults.font.family = "'Epilogue', sans-serif";
-        Chart.defaults.color = "#64748b";
+      <!-- ══ ANALYTICS ═════════════════════════════════════════════ -->
+      <section class="page-section" id="section-analytics">
+        <div class="page-header">
+          <h2>Analytics</h2>
+          <p>Detailed metrics and trend analysis</p>
+        </div>
 
-        // ── Auth Guard ──────────────────────────────────────────────────────────────
-        auth.onAuthStateChanged(function (user) {
-            if (authChecked) return;
-            authChecked = true;
+        <!-- Date Range -->
+        <div class="filter-bar" style="margin-bottom:1.5rem">
+          <span style="font-size:0.875rem;font-weight:600;color:var(--text-secondary)">Date Range:</span>
+          <button class="filter-tab active" data-range="7">Last 7 Days</button>
+          <button class="filter-tab" data-range="30">Last 30 Days</button>
+          <button class="filter-tab" data-range="90">Last 90 Days</button>
+        </div>
 
-            if (!user) { window.location.replace('login.html'); return; }
+        <!-- Summary Stats -->
+        <div class="kpi-grid" style="margin-bottom:1.5rem" id="analytics-kpi">
+          <div class="kpi-card">
+            <div class="kpi-icon blue"><i class="ph-bold ph-percent"></i></div>
+            <div class="kpi-info">
+              <div class="kpi-value" id="an-avg-att">—</div>
+              <div class="kpi-label">Avg Daily Attendance Rate</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon green"><i class="ph-bold ph-fork-knife"></i></div>
+            <div class="kpi-info">
+              <div class="kpi-value" id="an-avg-meals">—</div>
+              <div class="kpi-label">Avg Meals/School/Day</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon yellow"><i class="ph-bold ph-trophy"></i></div>
+            <div class="kpi-info">
+              <div class="kpi-value" id="an-top-school">—</div>
+              <div class="kpi-label">Highest Attendance School</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon red"><i class="ph-bold ph-bowl-food"></i></div>
+            <div class="kpi-info">
+              <div class="kpi-value" id="an-top-item">—</div>
+              <div class="kpi-label">Most Consumed Item</div>
+            </div>
+          </div>
+        </div>
 
-            db.collection('users').doc(user.uid).get().then(function (snap) {
-                if (!snap.exists || snap.data().role !== 'gov') {
-                    return auth.signOut().then(function () { window.location.replace('login.html'); });
-                }
-                var p = snap.data();
-                document.getElementById('sideName').textContent = p.name || user.email;
-                var initials = (p.name || 'GO').replace(/[^a-zA-Z ]/g, '').split(' ').filter(Boolean).map(function (w) { return w[0] }).join('').slice(0, 2).toUpperCase() || 'GO';
-                document.getElementById('sideAvatar').textContent = initials;
+        <!-- Charts -->
+        <div class="grid-2" style="margin-bottom:1.25rem">
+          <div class="chart-card">
+            <h3>Daily Consumption Trend</h3>
+            <div class="chart-wrap">
+              <canvas id="an-consumption-chart"></canvas>
+            </div>
+          </div>
+          <div class="chart-card">
+            <h3>District Performance</h3>
+            <div class="chart-wrap">
+              <canvas id="an-district-chart"></canvas>
+            </div>
+          </div>
+        </div>
 
-                startListeners();
-                document.getElementById('appLoader').style.display = 'none';
-            }).catch(function (err) {
-                console.error('Profile error:', err);
-                // On network error, still show dashboard
-                startListeners();
-                document.getElementById('appLoader').style.display = 'none';
-            });
+        <div class="grid-2">
+          <div class="chart-card">
+            <h3>School-wise Attendance Comparison</h3>
+            <div class="chart-wrap">
+              <canvas id="an-school-chart"></canvas>
+            </div>
+          </div>
+          <div class="chart-card">
+            <h3>Stock Capacity Utilization</h3>
+            <div class="chart-wrap">
+              <canvas id="an-stock-donut"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
 
-            document.getElementById('logoutBtn').onclick = function () {
-                auth.signOut().then(function () { window.location.replace('login.html'); });
-            };
-        });
+      <!-- ══ ALERTS ════════════════════════════════════════════════ -->
+      <section class="page-section" id="section-alerts">
+        <div class="page-header">
+          <h2>Alerts — All Schools</h2>
+          <p>Monitor warnings and critical notifications across all schools</p>
+        </div>
 
-        // ── Listeners ──────────────────────────────────────────────────────────────
-        function startListeners() {
-            listenAnalytics();
-            listenSchools();
-            listenAlerts();
-        }
+        <!-- Alert Statistics -->
+        <div class="kpi-grid" style="margin-bottom:1.25rem">
+          <div class="kpi-card">
+            <div class="kpi-icon yellow"><i class="ph-bold ph-warning"></i></div>
+            <div class="kpi-info">
+              <div class="kpi-value" id="gov-warnings">—</div>
+              <div class="kpi-label">Active Warnings</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon red"><i class="ph-bold ph-x-circle"></i></div>
+            <div class="kpi-info">
+              <div class="kpi-value" id="gov-criticals">—</div>
+              <div class="kpi-label">Critical Alerts</div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon blue"><i class="ph-bold ph-buildings"></i></div>
+            <div class="kpi-info">
+              <div class="kpi-value" id="gov-most-alerted">—</div>
+              <div class="kpi-label">Most Alerted School</div>
+            </div>
+          </div>
+        </div>
 
-        function listenAnalytics() {
-            db.collection('analytics').doc('state').onSnapshot(function (snap) {
-                if (!snap.exists) {
-                    document.getElementById('anaSubtitle').textContent = 'No analytics data. Run the seed script first.';
-                    return;
-                }
-                var d = snap.data();
-                document.getElementById('kpiBenef').textContent = d.totalBeneficiaries ? (d.totalBeneficiaries / 1e6).toFixed(1) + 'M' : '–';
-                document.getElementById('kpiAtt').textContent = d.avgDailyAttendance != null ? d.avgDailyAttendance + '%' : '–';
+        <!-- Filters -->
+        <div class="filter-bar">
+          <select class="form-control" id="gov-alert-severity" style="max-width:160px">
+            <option value="">All Severity</option>
+            <option value="warning">Warning</option>
+            <option value="critical">Critical</option>
+          </select>
+          <select class="form-control" id="gov-alert-status" style="max-width:160px">
+            <option value="active">Active</option>
+            <option value="">All</option>
+            <option value="resolved">Resolved</option>
+          </select>
+          <select class="form-control" id="gov-alert-district" style="max-width:160px">
+            <option value="">All Districts</option>
+          </select>
+        </div>
 
-                var alertsVal = d.activeAlerts != null ? d.activeAlerts : 0;
-                document.getElementById('kpiAlerts').textContent = alertsVal;
-                document.getElementById('kpiAlerts').style.color = alertsVal > 0 ? '#ef4444' : 'white';
+        <div id="gov-alerts-list" style="margin-top:1rem">
+          <div class="skeleton-row"><div class="skeleton"></div></div>
+        </div>
+      </section>
 
-                document.getElementById('anaSubtitle').textContent =
-                    'Live data · Updated ' + new Date().toLocaleTimeString('en-IN');
+      <!-- ══ PROFILE ════════════════════════════════════════════════ -->
+      <section class="page-section" id="section-profile">
+        <div class="page-header">
+          <h2>Profile</h2>
+          <p>Your government account information</p>
+        </div>
+        <div class="card" style="max-width:480px">
+          <h3 style="margin-bottom:1.25rem;font-size:0.95rem">Account Details</h3>
+          <div class="profile-row">
+            <span class="profile-label">Name</span>
+            <span id="prof-name">—</span>
+          </div>
+          <div class="profile-row">
+            <span class="profile-label">Email</span>
+            <span id="prof-email">—</span>
+          </div>
+          <div class="profile-row">
+            <span class="profile-label">Role</span>
+            <span class="badge badge-active">Government Official</span>
+          </div>
+          <div class="profile-row">
+            <span class="profile-label">District</span>
+            <span id="prof-district">—</span>
+          </div>
+        </div>
+      </section>
 
-                renderReportSummary(d);
-                renderBarChart(d);
-                renderRadarChart(d);
-            }, function (err) { console.error('Analytics:', err); });
-        }
+    </main>
+  </div>
 
-        function listenSchools() {
-            db.collection('schools').onSnapshot(function (snap) {
-                allSchools = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); })
-                    .sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
-                renderRegistry(allSchools);
-                document.getElementById('kpiSchools').textContent = allSchools.length;
-
-                var districts = [];
-                allSchools.forEach(function (s) { if (s.district && districts.indexOf(s.district) === -1) districts.push(s.district); });
-                districts.sort();
-                var sel = document.getElementById('districtFilter');
-                var cur = sel.value;
-                sel.innerHTML = '<option value="">All Districts</option>';
-                districts.forEach(function (d) { sel.innerHTML += '<option value="' + d + '">' + d + '</option>'; });
-                sel.value = cur;
-            }, function (err) { console.error('Schools:', err); });
-        }
-
-        function listenAlerts() {
-            db.collection('alerts').where('status', '==', 'active')
-                .onSnapshot(function (snap) {
-                    allAlerts = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); })
-                        .sort(function (a, b) { return ((b.timestamp && b.timestamp.seconds) || 0) - ((a.timestamp && a.timestamp.seconds) || 0); });
-                    renderAlerts(allAlerts);
-
-                    var count = allAlerts.length;
-                    var badge = document.getElementById('alertBadge');
-                    badge.textContent = count;
-                    badge.style.display = count > 0 ? 'inline' : 'none';
-                    var cBadge = document.getElementById('alertCountBadge');
-                    cBadge.textContent = count;
-                    cBadge.style.display = count > 0 ? 'inline' : 'none';
-                }, function (err) { console.error('Alerts:', err); });
-        }
-
-        // ── Navigation ──────────────────────────────────────────────────────────────
-        function goPage(id) {
-            document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
-            document.querySelectorAll('.nav-item[data-p]').forEach(function (n) {
-                n.classList.toggle('on', n.dataset.p === id);
-            });
-            document.getElementById('page-' + id).classList.add('active');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-
-        // ── Registry ────────────────────────────────────────────────────────────────
-        function renderRegistry(schools) {
-            var body = document.getElementById('registryBody');
-            if (!schools.length) {
-                body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:3rem;color:#475569">No schools found.</td></tr>';
-                document.getElementById('schoolCount').textContent = '0 schools';
-                return;
-            }
-            var statusMap = { Active: '#22c55e', Attention: '#ef4444', Warning: '#f59e0b' };
-            body.innerHTML = schools.map(function (s) {
-                var c = statusMap[s.status] || '#64748b';
-                return '<tr>' +
-                    '<td style="font-family:monospace;font-size:.75rem;color:#64748b">' + s.id + '</td>' +
-                    '<td style="font-weight:700;color:#e2e8f0">' + s.name + '</td>' +
-                    '<td style="color:#94a3b8">' + (s.district || '–') + '</td>' +
-                    '<td>' + ((s.enrolled || 0).toLocaleString('en-IN')) + '</td>' +
-                    '<td><span style="background:' + c + '22;color:' + c + ';padding:2px 10px;border-radius:999px;font-size:.72rem;font-weight:700">' + (s.status || '–') + '</span></td>' +
-                    '</tr>';
-            }).join('');
-            document.getElementById('schoolCount').textContent = schools.length + ' school' + (schools.length !== 1 ? 's' : '') + ' shown';
-        }
-
-        function filterSchools() {
-            var q = document.getElementById('schoolSearch').value.toLowerCase();
-            var d = document.getElementById('districtFilter').value;
-            renderRegistry(allSchools.filter(function (s) {
-                return (!q || s.name.toLowerCase().indexOf(q) !== -1 || s.id.toLowerCase().indexOf(q) !== -1) &&
-                    (!d || s.district === d);
-            }));
-        }
-
-        function exportCSV() {
-            if (!allSchools.length) { showToast('No data to export.', true); return; }
-            var rows = [['ID', 'Name', 'District', 'Enrolled', 'Status']];
-            allSchools.forEach(function (s) { rows.push([s.id, '"' + s.name + '"', s.district || '', s.enrolled || 0, s.status || '']); });
-            var blob = new Blob([rows.map(function (r) { return r.join(',') }).join('\n')], { type: 'text/csv' });
-            var a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'Schools_' + new Date().toISOString().slice(0, 10) + '.csv';
-            a.click();
-            URL.revokeObjectURL(a.href);
-            showToast('Registry exported as CSV.');
-        }
-
-        // ── Alerts ──────────────────────────────────────────────────────────────────
-        function renderAlerts(alerts) {
-            var container = document.getElementById('alertsContainer');
-            if (!alerts.length) {
-                container.innerHTML = '<div class="card" style="text-align:center;padding:3rem"><i class="ph ph-check-circle" style="font-size:3rem;color:#22c55e;display:block;margin:0 auto .75rem"></i><h3 style="color:white;font-size:1.25rem;margin-bottom:.375rem">All Clear!</h3><p style="color:#64748b;font-size:.875rem">No active alerts right now.</p></div>';
-                return;
-            }
-            var sev2col = { critical: '#ef4444', warning: '#f59e0b', info: '#3b82f6' };
-            var sev2icon = { critical: 'ph-warning-octagon', warning: 'ph-warning-circle', info: 'ph-info' };
-            container.innerHTML = alerts.map(function (a) {
-                var sev = a.severity || 'info';
-                var col = sev2col[sev] || '#64748b';
-                var icon = sev2icon[sev] || 'ph-info';
-                var ago = a.timestamp && a.timestamp.seconds ? timeAgo(new Date(a.timestamp.seconds * 1000)) : '–';
-                return '<div class="alert-item ' + sev + '">' +
-                    '<div style="width:2.5rem;height:2.5rem;border-radius:50%;background:' + col + '22;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ph ' + icon + '" style="color:' + col + ';font-size:1.25rem"></i></div>' +
-                    '<div style="flex:1">' +
-                    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;margin-bottom:.25rem">' +
-                    '<span style="font-weight:700;color:white;font-size:.9rem">' + (a.title || 'Alert') + '</span>' +
-                    '<span style="font-size:.72rem;color:#64748b;flex-shrink:0">' + ago + '</span>' +
-                    '</div>' +
-                    '<p style="font-size:.8rem;color:#94a3b8;margin-bottom:.75rem;line-height:1.5">' + (a.message || '') + '</p>' +
-                    '<button onclick="resolveAlert(\'' + a.id + '\')" ' +
-                    'style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#e2e8f0;border-radius:.5rem;padding:.375rem .875rem;font-size:.75rem;font-weight:600;cursor:pointer;font-family:\'Epilogue\',sans-serif">' +
-                    '✓ Mark Resolved</button>' +
-                    '</div>' +
-                    '</div>';
-            }).join('');
-        }
-
-        function resolveAlert(id) {
-            db.collection('alerts').doc(id).update({ status: 'resolved' })
-                .then(function () { showToast('Alert resolved.'); })
-                .catch(function (err) { showToast('Failed: ' + err.message, true); });
-        }
-
-        function markAllResolved() {
-            if (!allAlerts.length) { showToast('No active alerts.'); return; }
-            var promises = allAlerts.map(function (a) { return db.collection('alerts').doc(a.id).update({ status: 'resolved' }); });
-            Promise.all(promises)
-                .then(function () { showToast(allAlerts.length + ' alerts resolved.'); })
-                .catch(function (err) { showToast('Error: ' + err.message, true); });
-        }
-
-        // ── Charts ──────────────────────────────────────────────────────────────────
-        function renderBarChart(d) {
-            var monthly = d.mealsServedMonthly || {};
-            var target = d.mealsTargetMonthly || {};
-            var labels = Object.keys(monthly).map(function (l) { return l.charAt(0).toUpperCase() + l.slice(1); });
-            var actual = Object.values(monthly);
-            var tgt = labels.map(function (l) { return target[l.toLowerCase()] || 0; });
-
-            var ctx = document.getElementById('barChart').getContext('2d');
-            if (barChart) barChart.destroy();
-            barChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [
-                        { label: 'Served (M)', data: actual, backgroundColor: '#EA580C', borderRadius: 4 },
-                        { label: 'Target (M)', data: tgt, backgroundColor: 'rgba(251,146,60,.2)', borderRadius: 4 },
-                    ]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 10, color: '#94a3b8' } } },
-                    scales: {
-                        x: { grid: { display: false }, border: { display: false }, ticks: { color: '#64748b' } },
-                        y: { grid: { color: 'rgba(255,255,255,.04)' }, border: { display: false }, ticks: { color: '#64748b' } }
-                    }
-                }
-            });
-        }
-
-        function renderRadarChart(d) {
-            var perf = d.districtPerformance || {};
-            var labels = perf.labels || ['Attendance', 'Stock', 'Reporting', 'Hygiene', 'Coverage'];
-            var ctx = document.getElementById('radarChart').getContext('2d');
-            if (radarChart) radarChart.destroy();
-            radarChart = new Chart(ctx, {
-                type: 'radar',
-                data: {
-                    labels: labels,
-                    datasets: [
-                        { label: 'Bhopal', data: perf.bhopal || [], fill: true, backgroundColor: 'rgba(234,88,12,.2)', borderColor: '#EA580C', pointBackgroundColor: '#EA580C' },
-                        { label: 'Indore', data: perf.indore || [], fill: true, backgroundColor: 'rgba(251,146,60,.15)', borderColor: '#fb923c', pointBackgroundColor: '#fb923c' },
-                    ]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    scales: { r: { grid: { color: 'rgba(255,255,255,.06)' }, ticks: { display: false, stepSize: 20 }, pointLabels: { color: '#94a3b8', font: { size: 11 } } } },
-                    plugins: { legend: { labels: { color: '#94a3b8', boxWidth: 10 } } }
-                }
-            });
-        }
-
-        function renderReportSummary(d) {
-            var items = [
-                ['👨‍👩‍👧 Beneficiaries', (d.totalBeneficiaries || 0).toLocaleString('en-IN')],
-                ['📅 Avg Attendance', (d.avgDailyAttendance || '–') + '%'],
-                ['🚨 Active Alerts', d.activeAlerts != null ? d.activeAlerts : '–'],
-                ['🏫 Schools', allSchools.length],
-            ];
-            document.getElementById('reportSummary').innerHTML = items.map(function (item) {
-                return '<div style="background:#0F172A;border-radius:.625rem;padding:.875rem 1rem;display:flex;justify-content:space-between;align-items:center;margin-bottom:.625rem">' +
-                    '<span style="font-size:.85rem;color:#94a3b8">' + item[0] + '</span>' +
-                    '<span style="font-weight:700;color:white">' + item[1] + '</span>' +
-                    '</div>';
-            }).join('');
-        }
-
-        // ── Helpers ─────────────────────────────────────────────────────────────────
-        function timeAgo(date) {
-            var s = Math.floor((Date.now() - date) / 1000);
-            if (s < 60) return s + 's ago';
-            if (s < 3600) return Math.floor(s / 60) + 'm ago';
-            if (s < 86400) return Math.floor(s / 3600) + 'h ago';
-            return Math.floor(s / 86400) + 'd ago';
-        }
-
-        function showToast(msg, isErr) {
-            var t = document.getElementById('toast');
-            t.style.background = isErr ? '#dc2626' : '#16a34a';
-            document.getElementById('toastIco').className = isErr ? 'ph ph-warning-circle' : 'ph ph-check-circle';
-            document.getElementById('toastTxt').textContent = msg;
-            t.classList.add('show');
-            setTimeout(function () { t.classList.remove('show'); }, 4000);
-        }
-    </script>
+  <script type="module" src="js/gov-dashboard.js"></script>
 </body>
-
 </html>

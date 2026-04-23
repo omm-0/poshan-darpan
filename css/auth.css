@@ -1,0 +1,205 @@
+/* ─── Auth Page Layout ───────────────────────────────────────────────────── */
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1E40AF 0%, #1E293B 60%, #0F172A 100%);
+  padding: 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+/* decorative circles */
+.auth-page::before,
+.auth-page::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0.08;
+  background: #fff;
+}
+.auth-page::before {
+  width: 500px; height: 500px;
+  top: -150px; right: -150px;
+}
+.auth-page::after {
+  width: 300px; height: 300px;
+  bottom: -80px; left: -80px;
+}
+
+/* ─── Auth Card ──────────────────────────────────────────────────────────── */
+.auth-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 2.5rem 2rem;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  position: relative;
+  z-index: 1;
+  animation: slideUp 0.4s cubic-bezier(0.34,1.56,0.64,1);
+}
+
+@keyframes slideUp {
+  from { transform: translateY(30px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* ─── Auth Header ────────────────────────────────────────────────────────── */
+.auth-logo {
+  text-align: center;
+  margin-bottom: 1.75rem;
+}
+
+.auth-logo-icon {
+  width: 64px; height: 64px;
+  background: linear-gradient(135deg, var(--primary), #7C3AED);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  color: #fff;
+  margin: 0 auto 0.875rem;
+  box-shadow: 0 8px 20px rgba(37,99,235,0.35);
+}
+
+.auth-logo h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.auth-logo .tagline {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 0.2rem;
+}
+
+/* ─── Form Styles ────────────────────────────────────────────────────────── */
+.auth-form .form-group { margin-bottom: 1rem; }
+
+.auth-form .form-control {
+  padding: 0.7rem 1rem;
+}
+
+.auth-form .btn-primary {
+  width: 100%;
+  justify-content: center;
+  padding: 0.75rem;
+  font-size: 0.95rem;
+  margin-top: 0.5rem;
+  border-radius: var(--radius-sm);
+}
+
+/* ─── Auth Footer Links ──────────────────────────────────────────────────── */
+.auth-footer {
+  text-align: center;
+  margin-top: 1.25rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.auth-footer a {
+  color: var(--primary);
+  font-weight: 600;
+}
+.auth-footer a:hover { text-decoration: underline; }
+
+.forgot-link {
+  text-align: right;
+  margin-top: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+.forgot-link a {
+  font-size: 0.82rem;
+  color: var(--primary);
+}
+
+/* ─── Password field wrapper ─────────────────────────────────────────────── */
+.pwd-wrap {
+  position: relative;
+}
+.pwd-wrap .form-control { padding-right: 2.75rem; }
+.pwd-toggle {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%; transform: translateY(-50%);
+  color: var(--text-secondary);
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.pwd-toggle:hover { color: var(--text-primary); }
+
+/* ─── Role toggle ────────────────────────────────────────────────────────── */
+.role-select-wrap {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.role-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.85rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: center;
+}
+.role-option:hover { border-color: var(--primary); background: var(--primary-light); }
+.role-option.selected { border-color: var(--primary); background: var(--primary-light); }
+.role-option i { font-size: 1.4rem; color: var(--primary); }
+.role-option span { font-size: 0.8rem; font-weight: 600; color: var(--text-primary); }
+.role-option input[type="radio"] { display: none; }
+
+/* ─── Dynamic fields ─────────────────────────────────────────────────────── */
+.conditional-field { display: none; }
+.conditional-field.show { display: block; }
+
+/* ─── Divider ────────────────────────────────────────────────────────────── */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ─── Loading overlay on auth ────────────────────────────────────────────── */
+.auth-spinner-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255,255,255,0.85);
+  border-radius: 20px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.auth-spinner-overlay.show { display: flex; }
+.auth-spinner-overlay p { font-size: 0.875rem; color: var(--text-secondary); }
+
+/* ─── Register wide card ─────────────────────────────────────────────────── */
+.auth-card.wide { max-width: 520px; }
+
+@media (max-width: 480px) {
+  .auth-card { padding: 2rem 1.25rem; border-radius: 16px; }
+  .auth-card.wide { max-width: 100%; }
+}

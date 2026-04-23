@@ -1,43 +1,46 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: the requesting user is signed in
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    // Users can read/write ONLY their own profile
+    // Users can only read/write their own profile
     match /users/{userId} {
-      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Any signed-in user can read schools
-    // Only the school's admin can write their own school document
+    // Schools: school users write their own, gov users read all
     match /schools/{schoolId} {
-      allow read:  if isSignedIn();
-      allow write: if isSignedIn();
+      allow read: if request.auth != null;
+      allow write: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'school' &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.schoolId == schoolId;
 
-      // Inventory sub-collection: any signed-in user (for seeding + school admin updates)
-      match /inventory/{docId} {
-        allow read, write: if isSignedIn();
+      match /inventory/{document=**} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'school' &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.schoolId == schoolId;
       }
     }
 
-    // Attendance: any signed-in user can read/write (school admins submit, gov reads)
+    // Attendance: school users create, all authenticated users read, no delete/update
     match /attendance/{docId} {
-      allow read, write: if isSignedIn();
+      allow read: if request.auth != null;
+      allow create: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'school';
+      allow update, delete: if false;
     }
 
-    // Alerts: any signed-in user can read; any signed-in user can write (for resolving)
+    // Alerts: all authenticated can read and write (schools create/resolve, gov reads)
     match /alerts/{docId} {
-      allow read, write: if isSignedIn();
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
     }
 
-    // Analytics: any signed-in user can read (gov dashboard); write for seeding
-    match /analytics/{docId} {
-      allow read, write: if isSignedIn();
+    // Stock transactions: all authenticated can read/create, no update/delete
+    match /stockTransactions/{docId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if false;
     }
   }
 }

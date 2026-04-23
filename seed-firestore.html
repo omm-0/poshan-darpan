@@ -1,340 +1,222 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Seed | Poshan Darpan</title>
-    <!-- Firebase Compat SDK — works on file:// without ES module issues -->
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <style>
-        body {
-            font-family: monospace;
-            background: #0F172A;
-            color: #e2e8f0;
-            padding: 2rem;
-            max-width: 680px;
-            margin: 0 auto;
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Seed Database — Poshan Darpan</title>
+  <link rel="stylesheet" href="css/global.css" />
+  <style>
+    body { max-width: 640px; margin: 2rem auto; padding: 1.5rem; font-family: 'Inter', sans-serif; }
+    .log-entry { padding: 0.4rem 0; border-bottom: 1px solid #e2e8f0; font-size: 0.875rem; }
+    .log-ok  { color: #059669; }
+    .log-err { color: #DC2626; }
+    code { background:#f1f5f9; padding:0.15rem 0.35rem; border-radius:4px; font-size:0.85em; }
+  </style>
 
-        h1 {
-            color: #fb923c;
-            font-size: 1.5rem;
-            margin-bottom: .375rem;
-        }
-
-        .sub {
-            color: #64748b;
-            font-size: .875rem;
-            margin-bottom: 1.5rem;
-        }
-
-        #log {
-            background: #1e293b;
-            border-radius: .625rem;
-            padding: 1.25rem;
-            font-size: .8rem;
-            line-height: 1.9;
-            white-space: pre-wrap;
-            max-height: 58vh;
-            overflow-y: auto;
-            margin-bottom: 1rem;
-            border: 1px solid rgba(255, 255, 255, .06);
-        }
-
-        .ok {
-            color: #22c55e;
-        }
-
-        .err {
-            color: #ef4444;
-        }
-
-        .info {
-            color: #94a3b8;
-        }
-
-        .warn {
-            color: #f59e0b;
-        }
-
-        button {
-            background: #EA580C;
-            color: white;
-            border: none;
-            border-radius: .5rem;
-            padding: .625rem 1.5rem;
-            font-size: .9rem;
-            font-weight: 700;
-            cursor: pointer;
-            font-family: monospace;
-        }
-
-        button:disabled {
-            background: #374151;
-            cursor: not-allowed;
-        }
-
-        #doneBox {
-            display: none;
-            background: #064E3B;
-            border: 1px solid #059669;
-            border-radius: .625rem;
-            padding: 1rem 1.25rem;
-            margin-top: 1rem;
-        }
-
-        #doneBox p {
-            color: #34D399;
-            font-size: .875rem;
-            margin: .25rem 0;
-        }
-
-        #doneBox a {
-            color: #6EE7B7;
-            text-decoration: underline;
-        }
-
-        #doneBox strong {
-            color: white;
-        }
-    </style>
+  <!-- Firebase Compat SDK (works with regular script tags, no modules needed) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 </head>
-
 <body>
-    <h1>🌱 Poshan Darpan — Database Seed</h1>
-    <p class="sub">Creates demo users, school data, inventory, attendance records, alerts, and analytics in Firestore.
-    </p>
-    <div id="log"><span class="info">Press "Run Seed" to begin...</span></div>
-    <button id="seedBtn" onclick="runSeed()">▶ Run Seed</button>
+  <h1 style="margin-bottom:0.5rem">Poshan Darpan — Seed Data</h1>
+  <p style="color:#64748b;margin-bottom:1.5rem">
+    This tool pre-populates Firestore with sample schools, attendance, and alerts.
+    <strong>Run this only once on a fresh Firebase project.</strong>
+  </p>
 
-    <div id="doneBox">
-        <p>✅ <strong>Seed complete! Your database is ready.</strong></p>
-        <p>🏫 School Admin &nbsp;→ <strong>school@poshan.gov.in</strong> / <strong>school123</strong></p>
-        <p>🏛️ Govt Officer &nbsp;→ <strong>gov@poshan.gov.in</strong> / <strong>gov12345</strong></p>
-        <p style="margin-top:.5rem;color:#64748b;font-size:.8rem">Now open <a href="login.html">login.html</a> with VS
-            Code Live Server.</p>
-    </div>
+  <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:1rem;margin-bottom:1.5rem;font-size:0.875rem">
+    <strong>Requirements:</strong> Firestore must be in <strong>test mode</strong> (allows all reads/writes).
+    Open via Live Server at <code>http://127.0.0.1:5500</code> — not as a local file.
+  </div>
 
-    <script>
-        firebase.initializeApp({
-            apiKey: 'AIzaSyBRzYpEHR6rPhIlfkBssPxR03zFI5GJBB8',
-            authDomain: 'poshan-darpan.firebaseapp.com',
-            projectId: 'poshan-darpan',
-            storageBucket: 'poshan-darpan.firebasestorage.app',
-            messagingSenderId: '355897523524',
-            appId: '1:355897523524:web:4ece8290d6d55f1bf82b11'
-        });
-        var auth = firebase.auth();
-        var db = firebase.firestore();
+  <button
+    style="background:#2563EB;color:#fff;border:none;padding:0.65rem 1.5rem;border-radius:8px;font-size:0.95rem;font-weight:600;cursor:pointer"
+    id="seed-btn"
+    onclick="runSeed()"
+  >
+    Seed Database
+  </button>
+  <button
+    style="background:#f1f5f9;border:1px solid #e2e8f0;padding:0.65rem 1.25rem;border-radius:8px;font-size:0.95rem;cursor:pointer;margin-left:0.75rem"
+    onclick="document.getElementById('log').innerHTML=''"
+  >
+    Clear Log
+  </button>
 
-        var logEl = document.getElementById('log');
+  <div id="log" style="margin-top:1.5rem"></div>
 
-        function log(msg, type) {
-            type = type || 'info';
-            logEl.innerHTML += '\n<span class="' + type + '">' + msg + '</span>';
-            logEl.scrollTop = logEl.scrollHeight;
+  <script>
+    // ── Firebase config (same values as firebase-config.js) ──────────────────
+    const firebaseConfig = {
+      apiKey: "AIzaSyBolmvK_ICxHPgMxGqvFWjgG6ZT4j_iREk",
+      authDomain: "poshan-darpan-4b312.firebaseapp.com",
+      projectId: "poshan-darpan-4b312",
+      storageBucket: "poshan-darpan-4b312.firebasestorage.app",
+      messagingSenderId: "693623059136",
+      appId: "1:693623059136:web:6da7666c30d0d634353325"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    function log(msg, type = 'ok') {
+      const el = document.getElementById('log');
+      el.innerHTML += `<div class="log-entry log-${type}">${type === 'ok' ? '✓' : '✗'} ${msg}</div>`;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    async function runSeed() {
+      const btn = document.getElementById('seed-btn');
+      btn.disabled = true;
+      btn.textContent = 'Seeding…';
+
+      try {
+        // ── Schools ────────────────────────────────────────────────────────
+        const schools = [
+          {
+            id: 'school_ujjain',
+            data: {
+              name: 'Government Primary School, Ujjain',
+              enrollment: 250,
+              district: 'Ujjain',
+              status: 'active',
+              contactPerson: 'Ramesh Sharma',
+              contactEmail: 'ramesh@school-ujjain.edu.in',
+              createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            },
+            inventory: {
+              rice:  { current: 80,  max: 200 },
+              wheat: { current: 60,  max: 150 },
+              dal:   { current: 15,  max: 50  },
+              lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+            }
+          },
+          {
+            id: 'school_indore',
+            data: {
+              name: 'Government Middle School, Indore',
+              enrollment: 400,
+              district: 'Indore',
+              status: 'active',
+              contactPerson: 'Sunita Patel',
+              contactEmail: 'sunita@school-indore.edu.in',
+              createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            },
+            inventory: {
+              rice:  { current: 150, max: 300 },
+              wheat: { current: 120, max: 250 },
+              dal:   { current: 35,  max: 80  },
+              lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+            }
+          },
+          {
+            id: 'school_bhopal',
+            data: {
+              name: 'Government High School, Bhopal',
+              enrollment: 600,
+              district: 'Bhopal',
+              status: 'active',
+              contactPerson: 'Vikram Singh',
+              contactEmail: 'vikram@school-bhopal.edu.in',
+              createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            },
+            inventory: {
+              rice:  { current: 30,  max: 400 },
+              wheat: { current: 200, max: 350 },
+              dal:   { current: 8,   max: 100 },
+              lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+            }
+          }
+        ];
+
+        for (const s of schools) {
+          await db.collection('schools').doc(s.id).set(s.data);
+          log(`School created: ${s.data.name}`);
+          await db.collection('schools').doc(s.id).collection('inventory').doc('stock').set(s.inventory);
+          log(`Inventory set for: ${s.data.name}`);
         }
 
-        function createOrGetUser(email, password, label) {
-            return auth.createUserWithEmailAndPassword(email, password).then(function (cred) {
-                log('✅ Created ' + label + ': ' + email, 'ok');
-                return cred.user.uid;
-            }).catch(function (err) {
-                if (err.code === 'auth/email-already-in-use') {
-                    log('ℹ️  ' + label + ' already exists, signing in...', 'warn');
-                    return auth.signInWithEmailAndPassword(email, password).then(function (cred) {
-                        log('✅ Signed in as ' + label, 'ok');
-                        return cred.user.uid;
-                    });
-                }
-                throw err;
+        // ── Attendance Records (10 per school, last 10 days) ───────────────
+        let attCount = 0;
+        for (const s of schools) {
+          for (let i = 1; i <= 10; i++) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const dateStr = d.toISOString().split('T')[0];
+            const studentsPresent = Math.floor(s.data.enrollment * (0.7 + Math.random() * 0.25));
+            await db.collection('attendance').add({
+              schoolId: s.id,
+              date: dateStr,
+              studentsPresent,
+              riceUsed:  parseFloat((studentsPresent * 0.1).toFixed(3)),
+              wheatUsed: parseFloat((studentsPresent * 0.1).toFixed(3)),
+              dalUsed:   parseFloat((studentsPresent * 0.03).toFixed(3)),
+              timestamp: firebase.firestore.Timestamp.fromDate(d),
+              submittedBy: 'seed-script'
             });
+            attCount++;
+          }
         }
+        log(`Attendance records created: ${attCount}`);
 
-        function runSeed() {
-            var btn = document.getElementById('seedBtn');
-            btn.disabled = true;
-            btn.textContent = '⏳ Running...';
-            logEl.innerHTML = '';
+        // ── Alerts ─────────────────────────────────────────────────────────
+        const alerts = [
+          {
+            schoolId: 'school_ujjain',
+            schoolName: 'Government Primary School, Ujjain',
+            type: 'stock', severity: 'warning', item: 'dal',
+            title: 'Warning: dal stock below 20%',
+            message: 'Dal stock is at 30% (15kg remaining). Please restock soon.',
+            status: 'active',
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            resolvedAt: null
+          },
+          {
+            schoolId: 'school_bhopal',
+            schoolName: 'Government High School, Bhopal',
+            type: 'stock', severity: 'critical', item: 'rice',
+            title: 'Critical: rice stock below 10%',
+            message: 'Rice stock is at 8% (30kg remaining). Immediate restocking required.',
+            status: 'active',
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            resolvedAt: null
+          },
+          {
+            schoolId: 'school_bhopal',
+            schoolName: 'Government High School, Bhopal',
+            type: 'stock', severity: 'critical', item: 'dal',
+            title: 'Critical: dal stock below 10%',
+            message: 'Dal stock is at 8% (8kg remaining). Immediate restocking required.',
+            status: 'active',
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            resolvedAt: null
+          }
+        ];
 
-            var schoolUid, govUid;
-
-            // Step 1: Create School Admin
-            log('── Step 1/6: Creating School Admin...', 'info');
-            createOrGetUser('school@poshan.gov.in', 'school123', 'School Admin')
-                .then(function (uid) {
-                    schoolUid = uid;
-                    log('   Writing school user profile...', 'info');
-                    return db.collection('users').doc(uid).set({
-                        email: 'school@poshan.gov.in',
-                        name: 'Amit Kumar',
-                        role: 'school',
-                        schoolId: 'SCH-1003'
-                    });
-                })
-                .then(function () {
-                    log('✅ School user profile written', 'ok');
-                    return auth.signOut();
-                })
-
-                // Step 2: Create Govt Officer
-                .then(function () {
-                    log('\n── Step 2/6: Creating Government Officer...', 'info');
-                    return createOrGetUser('gov@poshan.gov.in', 'gov12345', 'Govt Officer');
-                })
-                .then(function (uid) {
-                    govUid = uid;
-                    log('   Writing govt user profile...', 'info');
-                    return db.collection('users').doc(uid).set({
-                        email: 'gov@poshan.gov.in',
-                        name: 'Dr. Priya Sharma',
-                        role: 'gov'
-                    });
-                })
-                .then(function () {
-                    log('✅ Govt user profile written', 'ok');
-                    return auth.signOut();
-                })
-
-                // Step 3: School data (sign in as school admin)
-                .then(function () {
-                    log('\n── Step 3/6: Writing school and inventory data...', 'info');
-                    return auth.signInWithEmailAndPassword('school@poshan.gov.in', 'school123');
-                })
-                .then(function () {
-                    return db.collection('schools').doc('SCH-1003').set({
-                        name: 'Govt Primary School, Bhopal',
-                        district: 'Bhopal',
-                        enrolled: 520,
-                        status: 'Active',
-                        adminUid: schoolUid
-                    });
-                })
-                .then(function () {
-                    log('✅ SCH-1003 school document written', 'ok');
-                    return db.collection('schools').doc('SCH-1003').collection('inventory').doc('stock').set({
-                        rice: { current: 420, max: 600 },
-                        wheat: { current: 85, max: 600 },
-                        dal: { current: 55, max: 200 }
-                    });
-                })
-                .then(function () {
-                    log('✅ Inventory written (rice:420kg, wheat:85kg [LOW], dal:55kg [LOW])', 'ok');
-
-                    // Step 4: Attendance records
-                    log('\n── Step 4/6: Writing attendance records...', 'info');
-                    var now = new Date();
-                    var records = [];
-                    for (var i = 1; i <= 5; i++) {
-                        var d = new Date(now.getTime() - i * 86400000);
-                        var dateStr = d.toISOString().split('T')[0];
-                        var count = 480 + Math.floor(Math.random() * 40);
-                        records.push({
-                            schoolId: 'SCH-1003',
-                            date: dateStr,
-                            studentsPresent: count,
-                            riceUsed: parseFloat((count * 0.10).toFixed(2)),
-                            wheatUsed: parseFloat((count * 0.10).toFixed(2)),
-                            dalUsed: parseFloat((count * 0.03).toFixed(2)),
-                            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                        });
-                    }
-
-                    var promise = Promise.resolve();
-                    records.forEach(function (rec) {
-                        promise = promise.then(function () {
-                            return db.collection('attendance').add(rec).then(function () {
-                                log('   ✅ Attendance ' + rec.date + ' → ' + rec.studentsPresent + ' students', 'ok');
-                            });
-                        });
-                    });
-                    return promise;
-                })
-                .then(function () {
-                    return auth.signOut();
-                })
-
-                // Step 5: Alerts + extra schools + analytics (sign in as gov)
-                .then(function () {
-                    log('\n── Step 5/6: Writing alerts, extra schools, analytics...', 'info');
-                    return auth.signInWithEmailAndPassword('gov@poshan.gov.in', 'gov12345');
-                })
-                .then(function () {
-                    return db.collection('alerts').doc('ALT-001').set({
-                        title: 'Wheat Stock Critical — SCH-1003',
-                        message: 'Govt Primary School Bhopal: Wheat at 85 kg (14%). Urgent restock required within 48 hrs.',
-                        type: 'stock',
-                        severity: 'critical',
-                        schoolId: 'SCH-1003',
-                        status: 'active',
-                        timestamp: { seconds: Math.floor(Date.now() / 1000) - 3600, nanoseconds: 0 }
-                    });
-                })
-                .then(function () {
-                    return db.collection('alerts').doc('ALT-002').set({
-                        title: 'Dal Stock Low — SCH-1003',
-                        message: 'Govt Primary School Bhopal: Dal at 55 kg (28%). Schedule delivery within 3 days.',
-                        type: 'stock',
-                        severity: 'warning',
-                        schoolId: 'SCH-1003',
-                        status: 'active',
-                        timestamp: { seconds: Math.floor(Date.now() / 1000) - 7200, nanoseconds: 0 }
-                    });
-                })
-                .then(function () {
-                    log('✅ 2 alerts written', 'ok');
-                    return db.collection('schools').doc('SCH-2048').set({
-                        name: 'District Boys\' School, Indore', district: 'Indore', enrolled: 680, status: 'Active'
-                    });
-                })
-                .then(function () {
-                    return db.collection('schools').doc('SCH-0911').set({
-                        name: 'Rajendra Govt School, Gwalior', district: 'Gwalior', enrolled: 340, status: 'Attention'
-                    });
-                })
-                .then(function () {
-                    log('✅ Extra school entries written', 'ok');
-                    return db.collection('analytics').doc('state').set({
-                        totalBeneficiaries: 12400000,
-                        avgDailyAttendance: 84,
-                        activeAlerts: 2,
-                        mealsServedMonthly: { october: 2.1, november: 2.3, december: 2.0, january: 2.4, february: 2.2 },
-                        mealsTargetMonthly: { october: 2.5, november: 2.5, december: 2.5, january: 2.5, february: 2.5 },
-                        districtPerformance: {
-                            labels: ['Attendance', 'Stock Levels', 'Reporting', 'Sanitation', 'Coverage'],
-                            bhopal: [88, 72, 91, 85, 79],
-                            indore: [92, 81, 88, 90, 86]
-                        }
-                    });
-                })
-                .then(function () {
-                    log('✅ Analytics document written', 'ok');
-                    return auth.signOut();
-                })
-
-                // Done
-                .then(function () {
-                    log('\n══════════════════════════════════════════', 'ok');
-                    log('🎉 ALL DONE! Database seeded successfully.', 'ok');
-                    log('   Open login.html in your browser to test.', 'ok');
-                    log('══════════════════════════════════════════', 'ok');
-                    document.getElementById('doneBox').style.display = 'block';
-                    btn.textContent = '✅ Complete!';
-                })
-
-                .catch(function (err) {
-                    log('\n❌ ERROR: ' + err.message, 'err');
-                    log('   Code: ' + (err.code || 'unknown'), 'err');
-                    log('\nTip: Check Firestore rules in Firebase Console and make sure rules allow write for signed-in users.', 'warn');
-                    auth.signOut().catch(function () { });
-                    btn.disabled = false;
-                    btn.textContent = '▶ Retry Seed';
-                });
+        for (const alert of alerts) {
+          await db.collection('alerts').add(alert);
         }
-    </script>
+        log(`Alerts created: ${alerts.length}`);
+
+        log('🎉 Seeding complete!');
+        document.getElementById('log').innerHTML += `
+          <div style="margin-top:1rem;padding:1rem;background:#D1FAE5;border:1px solid #6EE7B7;border-radius:8px;font-size:0.875rem;line-height:1.8">
+            <strong>✅ Now register these users via the app's Register page:</strong><br/>
+            📧 school1@poshan.com / password123 → School Admin → <em>Government Primary School, Ujjain</em><br/>
+            📧 school2@poshan.com / password123 → School Admin → <em>Government Middle School, Indore</em><br/>
+            📧 school3@poshan.com / password123 → School Admin → <em>Government High School, Bhopal</em><br/>
+            📧 gov@poshan.com / password123 → Government Official → Madhya Pradesh<br/>
+          </div>
+        `;
+
+      } catch (e) {
+        log(`Error: ${e.message}`, 'err');
+        console.error(e);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Seed Database';
+      }
+    }
+  </script>
 </body>
-
 </html>
