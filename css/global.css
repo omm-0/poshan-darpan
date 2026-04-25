@@ -710,8 +710,7 @@ tbody td {
   .sidebar-toggle { display: flex; align-items: center; justify-content: center; }
   .main-content { margin-left: 0; }
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
-  .page-section { padding: 1.5rem 1rem 1.5rem 1rem; }
-  .page-section { padding-top: 4rem; }
+  .page-section { padding: 4rem 1rem 1.5rem 1rem; }
 }
 
 @media (max-width: 768px) {

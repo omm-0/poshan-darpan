@@ -557,9 +557,9 @@ function renderConsumptionChart(records, rangeLen) {
   const ctx = document.getElementById('an-consumption-chart');
   if (!ctx) return;
 
-  const days = Array.from({ length: Math.min(rangeLen, 30) }, (_, i) => {
+  const days = Array.from({ length: rangeLen }, (_, i) => {
     const d = new Date();
-    d.setDate(d.getDate() - (Math.min(rangeLen, 30) - 1 - i));
+    d.setDate(d.getDate() - (rangeLen - 1 - i));
     return d.toISOString().split('T')[0];
   });
 
@@ -628,10 +628,14 @@ function renderSchoolComparisonChart(schools) {
   const ctx = document.getElementById('an-school-chart');
   if (!ctx) return;
 
-  const top10 = schools.slice(0, 10);
   const recentMap = {};
   const last30 = filterByDays(allAttendance, 30);
   last30.forEach(r => { recentMap[r.schoolId] = (recentMap[r.schoolId] || 0) + (r.studentsPresent || 0); });
+
+  // Sort by total attendance descending so the top-performing schools are shown first
+  const top10 = [...schools]
+    .sort((a, b) => (recentMap[b.id] || 0) - (recentMap[a.id] || 0))
+    .slice(0, 10);
 
   const labels = top10.map(s => s.name.split(' ').slice(-1)[0]);
   const data   = top10.map(s => recentMap[s.id] || 0);

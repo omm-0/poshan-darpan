@@ -112,11 +112,24 @@ function setupLogout() {
 function setupInventoryListeners() {
   const invRef = doc(db, 'schools', schoolDoc.id, 'inventory', 'stock');
   const unsub  = onSnapshot(invRef, (snap) => {
-    if (!snap.exists()) return;
+    if (!snap.exists()) {
+      showToast('Inventory data not found for this school. Please contact support.', 'warning');
+      ['rice', 'wheat', 'dal'].forEach(item => {
+        setText(`kpi-${item}-val`, '—');
+        setText(`kpi-${item}-pct`, 'No inventory data');
+        setText(`inv-${item}-current`, '—');
+        setText(`inv-${item}-pct`, '—');
+        setBadge(`inv-${item}-badge`, 'inactive', 'N/A');
+      });
+      return;
+    }
     inventory = snap.data();
     renderInventory(inventory);
     renderOverviewStock(inventory);
-  }, err => console.error('Inventory listener error', err));
+  }, err => {
+    console.error('Inventory listener error', err);
+    showToast('Failed to load inventory data. Please refresh.', 'error');
+  });
   unsubs.push(unsub);
 
   // Attendance listener (real-time)
@@ -406,7 +419,8 @@ function setupAttendanceForm() {
     const maxEnr = schoolDoc.enrollment || 0;
 
     let valid = true;
-    if (!date || date > todayISO()) { showFieldError(dateErr, 'Date cannot be in the future.'); valid = false; }
+    if (!date)              { showFieldError(dateErr, 'Please select a date.'); valid = false; }
+    else if (date > todayISO()) { showFieldError(dateErr, 'Date cannot be in the future.'); valid = false; }
     if (isNaN(studs) || studs < 0) { showFieldError(studErr, 'Enter a valid number.'); valid = false; }
     else if (studs > maxEnr) { showFieldError(studErr, `Cannot exceed enrollment of ${maxEnr}.`); valid = false; }
     if (!valid) return;
@@ -576,31 +590,22 @@ function setupAlerts() {
     orderBy('timestamp', 'desc')
   );
   let currentFilter = 'all';
+  let cachedAlerts  = [];
 
   const unsub = onSnapshot(alertsQ, (snap) => {
-    const alerts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderAlerts(alerts, currentFilter);
-    updateAlertBadge(alerts);
+    cachedAlerts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderAlerts(cachedAlerts, currentFilter);
+    updateAlertBadge(cachedAlerts);
   }, err => console.error('Alerts listener', err));
   unsubs.push(unsub);
 
-  // Filter tabs
+  // Filter tabs — filter in-memory from the already-loaded snapshot, no extra Firestore reads
   document.querySelectorAll('#alerts-tabs .filter-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('#alerts-tabs .filter-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       currentFilter = tab.dataset.filter;
-      // Re-fetch and render (simplified — just filter in memory on next snapshot)
-      // Trigger a re-render by reading current alerts from DOM data attribute
-      const alertsQ2 = query(
-        collection(db, 'alerts'),
-        where('schoolId', '==', schoolDoc.id),
-        orderBy('timestamp', 'desc')
-      );
-      getDocs(alertsQ2).then(snap2 => {
-        const alerts2 = snap2.docs.map(d => ({ id: d.id, ...d.data() }));
-        renderAlerts(alerts2, currentFilter);
-      });
+      renderAlerts(cachedAlerts, currentFilter);
     });
   });
 

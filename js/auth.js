@@ -3,6 +3,7 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  updateProfile,
   signOut,
   sendPasswordResetEmail,
   collection, doc, getDoc, getDocs, setDoc, serverTimestamp
@@ -80,11 +81,16 @@ function initLoginPage() {
       emailInput.focus();
       return;
     }
+    forgotLink.style.pointerEvents = 'none';
+    forgotLink.textContent = 'Sending…';
     try {
       await sendPasswordResetEmail(auth, email);
       showToast('Password reset email sent. Check your inbox.', 'success');
     } catch (err) {
       showToast(friendlyAuthError(err.code), 'error');
+    } finally {
+      forgotLink.style.pointerEvents = '';
+      forgotLink.textContent = 'Forgot Password?';
     }
   });
 
@@ -232,6 +238,9 @@ function initRegisterPage() {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       const uid  = cred.user.uid;
 
+      // Set display name on the Firebase Auth profile so user.displayName works everywhere
+      await updateProfile(cred.user, { displayName: name }).catch(() => {});
+
       const userData = {
         email, name, role,
         createdAt: serverTimestamp(),
@@ -309,17 +318,21 @@ function clearErrors(els) {
 
 function friendlyAuthError(code) {
   const map = {
-    'auth/invalid-email':          'Invalid email address.',
-    'auth/user-not-found':         'No account found with this email.',
-    'auth/wrong-password':         'Incorrect password. Please try again.',
-    'auth/invalid-credential':     'Invalid email or password.',
-    'auth/email-already-in-use':   'This email is already registered.',
-    'auth/weak-password':          'Password must be at least 6 characters.',
-    'auth/network-request-failed': 'Network error. Check your internet connection.',
-    'auth/too-many-requests':      'Too many attempts. Please wait and try again.',
-    'auth/user-disabled':          'This account has been disabled.',
-    'app/no-profile':              'Account setup is incomplete. Please register first.',
-    'app/invalid-role':            'Your account role is invalid. Please contact support.',
+    'auth/invalid-email':             'Invalid email address.',
+    'auth/user-not-found':            'No account found with this email.',
+    'auth/wrong-password':            'Incorrect password. Please try again.',
+    'auth/invalid-credential':        'Invalid email or password.',
+    'auth/email-already-in-use':      'This email is already registered. Try logging in instead.',
+    'auth/weak-password':             'Password must be at least 6 characters.',
+    'auth/network-request-failed':    'Network error. Check your internet connection.',
+    'auth/too-many-requests':         'Too many attempts. Please wait a few minutes and try again.',
+    'auth/user-disabled':             'This account has been disabled.',
+    'auth/operation-not-allowed':     'Email/Password sign-in is not enabled. Please go to Firebase Console → Authentication → Sign-in method → Email/Password and enable it.',
+    'auth/configuration-not-found':   'Firebase Authentication is not configured for this project. Enable Email/Password in the Firebase Console.',
+    'auth/internal-error':            'Firebase internal error. Please check your internet connection and try again.',
+    'auth/popup-closed-by-user':      'Sign-in popup closed. Please try again.',
+    'app/no-profile':                 'Account setup is incomplete. Please register again.',
+    'app/invalid-role':               'Your account role is invalid. Please contact support.',
   };
-  return map[code] || 'An unexpected error occurred. Please try again.';
+  return map[code] || `An unexpected error occurred (${code || 'unknown'}). Please try again.`;
 }
