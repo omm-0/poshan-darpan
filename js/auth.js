@@ -1,338 +1,252 @@
-import {
-  auth, db,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  updateProfile,
-  signOut,
-  sendPasswordResetEmail,
-  collection, doc, getDoc, getDocs, setDoc, serverTimestamp
-} from './firebase-config.js';
-import { showToast, isValidEmail } from './utils.js';
+/* ============================================================
+   POSHAN DARPAN — AUTHENTICATION
+   Pure-frontend auth using localStorage. No Firebase.
+   Used by: index.html (login), register.html (register).
+   Also exposes guardRoute() / handleLogout() for dashboard pages.
+   ============================================================ */
 
-// ─── Auth State Guard ─────────────────────────────────────────────────────────
+(function () {
+  'use strict';
 
-const page = window.location.pathname.split('/').pop() || 'index.html';
-const AUTH_PAGES = new Set(['index.html', 'register.html', '']);
-const DASH_PAGES = new Set(['school-dashboard.html', 'gov-dashboard.html']);
+  const D = window.PD_Data;
+  const U = window.PD_Utils;
 
-// Prevents onAuthStateChanged from racing with an in-progress form submission.
-// Set to true while login/register is being processed; cleared after redirect or error.
-let _formHandling = false;
-
-onAuthStateChanged(auth, async (user) => {
-  if (_formHandling) return;
-
-  if (user) {
-    // Auto-redirect already-logged-in users away from auth pages
-    if (AUTH_PAGES.has(page)) {
-      try {
-        const snap = await getDoc(doc(db, 'users', user.uid));
-        if (snap.exists()) {
-          const role = snap.data().role;
-          if (role === 'school' || role === 'government') {
-            window.location.href = role === 'government'
-              ? 'gov-dashboard.html'
-              : 'school-dashboard.html';
-          }
-          // If role is invalid, stay on auth page so the user can re-register
-        }
-      } catch (e) {
-        console.error('Auth state guard failed:', e);
-      }
-    }
-  } else {
-    // Protect dashboard pages from unauthenticated access
-    if (DASH_PAGES.has(page)) {
+  // ============================================================
+  // SESSION GUARD (used by dashboards)
+  // ============================================================
+  function guardRoute(requiredRole) {
+    const user = D.getCurrentUser();
+    if (!user) {
       window.location.href = 'index.html';
+      return null;
     }
+    if (requiredRole && user.role !== requiredRole) {
+      // Wrong role → redirect to their dashboard
+      if (user.role === 'school') window.location.href = 'school-dashboard.html';
+      else if (user.role === 'government') window.location.href = 'gov-dashboard.html';
+      else window.location.href = 'index.html';
+      return null;
+    }
+    return user;
   }
-});
 
-// ─── Login Page ───────────────────────────────────────────────────────────────
-
-const loginForm = document.getElementById('login-form');
-if (loginForm) initLoginPage();
-
-function initLoginPage() {
-  const emailInput    = document.getElementById('email');
-  const passwordInput = document.getElementById('password');
-  const emailError    = document.getElementById('email-error');
-  const passwordError = document.getElementById('password-error');
-  const spinner       = document.getElementById('spinner');
-  const loginBtn      = document.getElementById('login-btn');
-  const togglePwd     = document.getElementById('toggle-pwd');
-  const toggleIcon    = document.getElementById('toggle-pwd-icon');
-  const forgotLink    = document.getElementById('forgot-link');
-
-  // Password visibility toggle
-  togglePwd?.addEventListener('click', () => {
-    const isText = passwordInput.type === 'text';
-    passwordInput.type = isText ? 'password' : 'text';
-    toggleIcon.className = isText ? 'ph-bold ph-eye' : 'ph-bold ph-eye-slash';
-  });
-
-  // Forgot password
-  forgotLink?.addEventListener('click', async (e) => {
-    e.preventDefault();
-    const email = emailInput.value.trim();
-    if (!email || !isValidEmail(email)) {
-      showToast('Please enter a valid email address first.', 'warning');
-      emailInput.focus();
-      return;
-    }
-    forgotLink.style.pointerEvents = 'none';
-    forgotLink.textContent = 'Sending…';
-    try {
-      await sendPasswordResetEmail(auth, email);
-      showToast('Password reset email sent. Check your inbox.', 'success');
-    } catch (err) {
-      showToast(friendlyAuthError(err.code), 'error');
-    } finally {
-      forgotLink.style.pointerEvents = '';
-      forgotLink.textContent = 'Forgot Password?';
-    }
-  });
-
-  // Form submit
-  loginForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    clearErrors([emailError, passwordError]);
-
-    const email    = emailInput.value.trim();
-    const password = passwordInput.value;
-    let valid = true;
-
-    if (!email || !isValidEmail(email)) {
-      showFieldError(emailError, 'Please enter a valid email address.');
-      valid = false;
-    }
-    if (!password) {
-      showFieldError(passwordError, 'Password is required.');
-      valid = false;
-    }
-    if (!valid) return;
-
-    spinner.classList.add('show');
-    loginBtn.disabled = true;
-    _formHandling = true;
-
-    try {
-      const cred = await signInWithEmailAndPassword(auth, email, password);
-
-      // ── CRITICAL: Read the Firestore profile BEFORE making any writes.
-      // Doing setDoc first was the cause of the login-redirect loop: it created
-      // a partial doc {lastLogin} with no role, which then caused the dashboard
-      // auth guard to reject the user and redirect back to login. ──
-      const snap = await getDoc(doc(db, 'users', cred.user.uid));
-      if (!snap.exists()) {
-        // Firebase Auth user exists but has no app profile — abort cleanly
-        await signOut(auth).catch(() => {});
-        throw { code: 'app/no-profile' };
+  function handleLogout() {
+    U.showConfirmDialog(
+      'Sign out?',
+      'You will be returned to the login screen.',
+      function () {
+        D.logoutUser();
+        U.showToast('Signed out successfully', 'success');
+        setTimeout(() => { window.location.href = 'index.html'; }, 400);
       }
-
-      const role = snap.data().role;
-      if (role !== 'school' && role !== 'government') {
-        await signOut(auth).catch(() => {});
-        throw { code: 'app/invalid-role' };
-      }
-
-      // Update lastLogin — non-critical; failure must never block login
-      setDoc(doc(db, 'users', cred.user.uid), { lastLogin: serverTimestamp() }, { merge: true })
-        .catch(err => console.warn('lastLogin update failed:', err));
-
-      showToast('Login successful! Redirecting…', 'success');
-      setTimeout(() => {
-        _formHandling = false;
-        window.location.href = role === 'government' ? 'gov-dashboard.html' : 'school-dashboard.html';
-      }, 600);
-    } catch (err) {
-      _formHandling = false;
-      spinner.classList.remove('show');
-      loginBtn.disabled = false;
-      showToast(friendlyAuthError(err.code || err.message), 'error');
-    }
-  });
-}
-
-// ─── Register Page ────────────────────────────────────────────────────────────
-
-const registerForm = document.getElementById('register-form');
-if (registerForm) initRegisterPage();
-
-function initRegisterPage() {
-  const spinner       = document.getElementById('spinner');
-  const togglePwd     = document.getElementById('toggle-pwd');
-  const toggleIcon    = document.getElementById('toggle-pwd-icon');
-  const roleSchoolLbl = document.getElementById('role-school-label');
-  const roleGovLbl    = document.getElementById('role-gov-label');
-  const schoolField   = document.getElementById('school-field');
-  const districtField = document.getElementById('district-field');
-  const schoolSelect  = document.getElementById('school-select');
-  const registerBtn   = document.getElementById('register-btn');
-
-  loadSchools(schoolSelect);
-
-  togglePwd?.addEventListener('click', () => {
-    const pwdInput = document.getElementById('password');
-    const isText   = pwdInput.type === 'text';
-    pwdInput.type  = isText ? 'password' : 'text';
-    toggleIcon.className = isText ? 'ph-bold ph-eye' : 'ph-bold ph-eye-slash';
-  });
-
-  [roleSchoolLbl, roleGovLbl].forEach(lbl => {
-    lbl?.addEventListener('click', () => {
-      roleSchoolLbl?.classList.remove('selected');
-      roleGovLbl?.classList.remove('selected');
-      lbl.classList.add('selected');
-      const radio = lbl.querySelector('input');
-      if (radio) radio.checked = true;
-      const role = radio?.value;
-      schoolField?.classList.toggle('show', role === 'school');
-      districtField?.classList.toggle('show', role === 'government');
-    });
-  });
-
-  registerForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const name            = document.getElementById('name')?.value.trim()            || '';
-    const email           = document.getElementById('email')?.value.trim()           || '';
-    const password        = document.getElementById('password')?.value               || '';
-    const confirmPassword = document.getElementById('confirm-password')?.value       || '';
-    const roleEl          = document.querySelector('input[name="role"]:checked');
-    const schoolId        = schoolSelect?.value                                       || '';
-    const district        = document.getElementById('district')?.value.trim()        || '';
-
-    const errs = {
-      name:     document.getElementById('name-error'),
-      email:    document.getElementById('email-error'),
-      password: document.getElementById('password-error'),
-      confirm:  document.getElementById('confirm-error'),
-      role:     document.getElementById('role-error'),
-      school:   document.getElementById('school-error'),
-      district: document.getElementById('district-error'),
-    };
-    clearErrors(Object.values(errs));
-
-    let valid = true;
-    if (!name)                          { showFieldError(errs.name,     'Full name is required.');                  valid = false; }
-    if (!email || !isValidEmail(email)) { showFieldError(errs.email,    'Enter a valid email address.');            valid = false; }
-    if (password.length < 6)            { showFieldError(errs.password, 'Password must be at least 6 characters.'); valid = false; }
-    if (password !== confirmPassword)   { showFieldError(errs.confirm,  'Passwords do not match.');                 valid = false; }
-    if (!roleEl)                        { showFieldError(errs.role,     'Please select a role.');                   valid = false; }
-    if (roleEl?.value === 'school' && !schoolId) {
-      showFieldError(errs.school, 'Please select a school.'); valid = false;
-    }
-    if (roleEl?.value === 'government' && !district) {
-      showFieldError(errs.district, 'Please enter your district / state.'); valid = false;
-    }
-    if (!valid) return;
-
-    spinner.classList.add('show');
-    registerBtn.disabled = true;
-    _formHandling = true;
-
-    try {
-      const role = roleEl.value;
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      const uid  = cred.user.uid;
-
-      // Set display name on the Firebase Auth profile so user.displayName works everywhere
-      await updateProfile(cred.user, { displayName: name }).catch(() => {});
-
-      const userData = {
-        email, name, role,
-        createdAt: serverTimestamp(),
-        lastLogin: serverTimestamp(),
-      };
-      if (role === 'school')     userData.schoolId = schoolId;
-      if (role === 'government') userData.district = district;
-
-      await setDoc(doc(db, 'users', uid), userData);
-
-      showToast('Account created! Redirecting…', 'success');
-      setTimeout(() => {
-        _formHandling = false;
-        window.location.href = role === 'government' ? 'gov-dashboard.html' : 'school-dashboard.html';
-      }, 700);
-    } catch (err) {
-      _formHandling = false;
-      spinner.classList.remove('show');
-      registerBtn.disabled = false;
-      showToast(friendlyAuthError(err.code || err.message), 'error');
-    }
-  });
-}
-
-async function loadSchools(selectEl) {
-  if (!selectEl) return;
-  try {
-    const snap = await getDocs(collection(db, 'schools'));
-    if (snap.empty) {
-      const opt = document.createElement('option');
-      opt.value    = '';
-      opt.disabled = true;
-      opt.textContent = '— No schools available (run seed first) —';
-      selectEl.appendChild(opt);
-      return;
-    }
-    snap.forEach(d => {
-      const opt = document.createElement('option');
-      opt.value       = d.id;
-      opt.textContent = d.data().name;
-      selectEl.appendChild(opt);
-    });
-  } catch (e) {
-    console.error('Failed to load schools:', e);
-    showToast('Failed to load schools list. Please refresh.', 'warning');
+    );
   }
-}
 
-// ─── Logout (exported for potential external use) ─────────────────────────────
-
-export async function logout() {
-  try {
-    await signOut(auth);
-    window.location.href = 'index.html';
-  } catch {
-    showToast('Logout failed. Please try again.', 'error');
+  function checkExistingSession() {
+    const user = D.getCurrentUser();
+    if (!user) return;
+    if (user.role === 'school')      window.location.href = 'school-dashboard.html';
+    else if (user.role === 'government') window.location.href = 'gov-dashboard.html';
   }
-}
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function showFieldError(el, msg) {
-  if (!el) return;
-  el.textContent = msg;
-  el.classList.add('show');
-}
-
-function clearErrors(els) {
-  els.forEach(el => {
+  // ============================================================
+  // INPUT ERROR HELPERS
+  // ============================================================
+  function setError(id, msg) {
+    const el = document.getElementById(id);
     if (!el) return;
-    el.textContent = '';
-    el.classList.remove('show');
-  });
-}
+    el.textContent = msg || '';
+    el.classList.toggle('show', !!msg);
+  }
+  function clearErrors(ids) { ids.forEach(id => setError(id, '')); }
 
-function friendlyAuthError(code) {
-  const map = {
-    'auth/invalid-email':             'Invalid email address.',
-    'auth/user-not-found':            'No account found with this email.',
-    'auth/wrong-password':            'Incorrect password. Please try again.',
-    'auth/invalid-credential':        'Invalid email or password.',
-    'auth/email-already-in-use':      'This email is already registered. Try logging in instead.',
-    'auth/weak-password':             'Password must be at least 6 characters.',
-    'auth/network-request-failed':    'Network error. Check your internet connection.',
-    'auth/too-many-requests':         'Too many attempts. Please wait a few minutes and try again.',
-    'auth/user-disabled':             'This account has been disabled.',
-    'auth/operation-not-allowed':     'Email/Password sign-in is not enabled. Please go to Firebase Console → Authentication → Sign-in method → Email/Password and enable it.',
-    'auth/configuration-not-found':   'Firebase Authentication is not configured for this project. Enable Email/Password in the Firebase Console.',
-    'auth/internal-error':            'Firebase internal error. Please check your internet connection and try again.',
-    'auth/popup-closed-by-user':      'Sign-in popup closed. Please try again.',
-    'app/no-profile':                 'Account setup is incomplete. Please register again.',
-    'app/invalid-role':               'Your account role is invalid. Please contact support.',
+  function setLoading(btnId, spinnerId, isLoading) {
+    const btn = document.getElementById(btnId);
+    if (btn) btn.disabled = isLoading;
+    const sp = document.getElementById(spinnerId);
+    if (sp) sp.classList.toggle('show', isLoading);
+  }
+
+  // ============================================================
+  // PASSWORD VISIBILITY TOGGLE
+  // ============================================================
+  function setupPasswordToggle() {
+    const toggle = document.getElementById('toggle-pwd');
+    const icon = document.getElementById('toggle-pwd-icon');
+    const input = document.getElementById('password');
+    if (!toggle || !input) return;
+    toggle.addEventListener('click', function () {
+      const showing = input.type === 'text';
+      input.type = showing ? 'password' : 'text';
+      if (icon) {
+        icon.classList.toggle('ph-eye', showing);
+        icon.classList.toggle('ph-eye-slash', !showing);
+      }
+    });
+  }
+
+  // ============================================================
+  // LOGIN PAGE
+  // ============================================================
+  function initLoginPage() {
+    checkExistingSession();
+    setupPasswordToggle();
+
+    const form = document.getElementById('login-form');
+    if (!form) return;
+
+    const forgot = document.getElementById('forgot-link');
+    if (forgot) {
+      forgot.addEventListener('click', function (e) {
+        e.preventDefault();
+        U.showToast('Demo mode: password reset is disabled. Use rajesh@school.com / school123 or sanjay@gov.com / gov123.', 'info');
+      });
+    }
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      clearErrors(['email-error', 'password-error']);
+
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+
+      let valid = true;
+      if (!email)                  { setError('email-error', 'Email is required.'); valid = false; }
+      else if (!U.isValidEmail(email)) { setError('email-error', 'Please enter a valid email.'); valid = false; }
+      if (!password)               { setError('password-error', 'Password is required.'); valid = false; }
+      if (!valid) return;
+
+      setLoading('login-btn', 'spinner', true);
+
+      // Simulate small delay for UX
+      setTimeout(function () {
+        const user = D.authenticateUser(email, password);
+        if (!user) {
+          setLoading('login-btn', 'spinner', false);
+          U.showToast('Invalid email or password.', 'error');
+          setError('password-error', 'Invalid credentials.');
+          return;
+        }
+        D.setCurrentUser(user);
+        U.showToast('Welcome back, ' + user.name + '!', 'success');
+        setTimeout(function () {
+          if (user.role === 'school')      window.location.href = 'school-dashboard.html';
+          else if (user.role === 'government') window.location.href = 'gov-dashboard.html';
+          else window.location.href = 'index.html';
+        }, 600);
+      }, 350);
+    });
+  }
+
+  // ============================================================
+  // REGISTER PAGE
+  // ============================================================
+  function populateSchoolDropdown() {
+    const select = document.getElementById('school-select');
+    if (!select) return;
+    const schools = D.getAllSchools();
+    schools.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.schoolId;
+      opt.textContent = s.name;
+      select.appendChild(opt);
+    });
+  }
+
+  function initRegisterPage() {
+    checkExistingSession();
+    setupPasswordToggle();
+    populateSchoolDropdown();
+
+    const form = document.getElementById('register-form');
+    if (!form) return;
+
+    const schoolField = document.getElementById('school-field');
+    const districtField = document.getElementById('district-field');
+    const roleSchool = document.getElementById('role-school');
+    const roleGov = document.getElementById('role-gov');
+
+    function applyRole() {
+      const role = (document.querySelector('input[name="role"]:checked') || {}).value;
+      const schoolLabel = document.getElementById('role-school-label');
+      const govLabel = document.getElementById('role-gov-label');
+      if (schoolLabel) schoolLabel.classList.toggle('selected', role === 'school');
+      if (govLabel) govLabel.classList.toggle('selected', role === 'government');
+      if (role === 'school') {
+        schoolField.classList.add('show');
+        districtField.classList.remove('show');
+      } else if (role === 'government') {
+        districtField.classList.add('show');
+        schoolField.classList.remove('show');
+      } else {
+        schoolField.classList.remove('show');
+        districtField.classList.remove('show');
+      }
+    }
+    if (roleSchool) roleSchool.addEventListener('change', applyRole);
+    if (roleGov)    roleGov.addEventListener('change', applyRole);
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      clearErrors(['name-error', 'email-error', 'password-error', 'confirm-error', 'role-error', 'school-error', 'district-error']);
+
+      const name = document.getElementById('name').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const confirm = document.getElementById('confirm-password').value;
+      const role = (document.querySelector('input[name="role"]:checked') || {}).value;
+      const schoolId = (document.getElementById('school-select') || {}).value;
+      const district = (document.getElementById('district') || {}).value;
+
+      let valid = true;
+      if (!name)                          { setError('name-error', 'Full name is required.'); valid = false; }
+      if (!email)                         { setError('email-error', 'Email is required.'); valid = false; }
+      else if (!U.isValidEmail(email))    { setError('email-error', 'Please enter a valid email.'); valid = false; }
+      if (!password)                      { setError('password-error', 'Password is required.'); valid = false; }
+      else if (!U.isPasswordStrong(password)) { setError('password-error', 'Password must be at least 6 characters.'); valid = false; }
+      if (!confirm)                       { setError('confirm-error', 'Please confirm your password.'); valid = false; }
+      else if (password !== confirm)      { setError('confirm-error', 'Passwords do not match.'); valid = false; }
+      if (!role)                          { setError('role-error', 'Please select a role.'); valid = false; }
+      if (role === 'school' && !schoolId)         { setError('school-error', 'Please select your school.'); valid = false; }
+      if (role === 'government' && !(district && district.trim())) { setError('district-error', 'Please enter your district / state.'); valid = false; }
+      if (!valid) return;
+
+      setLoading('register-btn', 'spinner', true);
+
+      setTimeout(function () {
+        const result = D.registerUser(name, email, password, role,
+          role === 'school' ? schoolId : null,
+          role === 'government' ? district.trim() : null
+        );
+        if (!result.success) {
+          setLoading('register-btn', 'spinner', false);
+          U.showToast(result.error, 'error');
+          setError('email-error', result.error);
+          return;
+        }
+        D.setCurrentUser(result.data);
+        U.showToast('Account created! Welcome, ' + result.data.name, 'success');
+        setTimeout(function () {
+          if (result.data.role === 'school') window.location.href = 'school-dashboard.html';
+          else window.location.href = 'gov-dashboard.html';
+        }, 600);
+      }, 350);
+    });
+  }
+
+  // ============================================================
+  // EXPOSE + AUTO-INIT
+  // ============================================================
+  window.PD_Auth = {
+    guardRoute: guardRoute,
+    handleLogout: handleLogout,
+    checkExistingSession: checkExistingSession,
+    initLoginPage: initLoginPage,
+    initRegisterPage: initRegisterPage
   };
-  return map[code] || `An unexpected error occurred (${code || 'unknown'}). Please try again.`;
-}
+
+  document.addEventListener('DOMContentLoaded', function () {
+    if (document.getElementById('login-form'))    initLoginPage();
+    if (document.getElementById('register-form')) initRegisterPage();
+  });
+})();

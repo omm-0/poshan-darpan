@@ -1,812 +1,726 @@
-import {
-  auth, db,
-  onAuthStateChanged,
-  signOut,
-  collection, doc, getDoc, getDocs,
-  query, where, orderBy, limit, onSnapshot
-} from './firebase-config.js';
-import {
-  showToast, formatDate, formatDateTime, timeAgo,
-  stockPct, stockStatus, stockStatusLabel, stockColor,
-  todayISO, getLast7Days, getLast30Days, getLast90Days,
-  sanitize, animateCount
-} from './utils.js';
+/* ============================================================
+   POSHAN DARPAN — GOVERNMENT ANALYTICS DASHBOARD
+   Five sections: Overview, Schools, Analytics, Alerts, Profile.
+   Pure frontend; reads via window.PD_Data.
+   ============================================================ */
 
-// ─── State ────────────────────────────────────────────────────────────────────
-let currentUser = null;
-let userDoc     = null;
-let allSchools  = [];   // [{id, ...schoolData, inventory}]
-let allAlerts   = [];
-let allAttendance = [];
-const charts   = {};
-const unsubs   = [];
-let analyticsRange = 7;
+(function () {
+  'use strict';
 
-// ─── Auth Guard ───────────────────────────────────────────────────────────────
-onAuthStateChanged(auth, async (user) => {
-  if (!user) { window.location.href = 'index.html'; return; }
-  currentUser = user;
+  const D = window.PD_Data;
+  const U = window.PD_Utils;
 
-  try {
-    const uSnap = await getDoc(doc(db, 'users', user.uid));
-    if (!uSnap.exists() || uSnap.data().role !== 'government') {
-      window.location.href = 'index.html';
-      return;
-    }
-    userDoc = uSnap.data();
-    document.getElementById('sidebar-username').textContent = userDoc.name || user.email;
-    hidePageLoading();
-    initGovDash();
-  } catch (e) {
-    showToast('Failed to load profile. Redirecting…', 'error');
-    console.error(e);
-    setTimeout(() => { window.location.href = 'index.html'; }, 2500);
+  // ============================================================
+  // STATE
+  // ============================================================
+  const state = {
+    user: null,
+    charts: {},
+    schoolFilters: { search: '', district: '', status: '', sort: 'name' },
+    alertFilters: { severity: '', status: 'active', district: '' },
+    analyticsRange: 7
+  };
+
+  // ============================================================
+  // INIT
+  // ============================================================
+  function init() {
+    state.user = window.PD_Auth.guardRoute('government');
+    if (!state.user) return;
+
+    setupSidebar();
+    setupNav();
+    setupLogout();
+    setupSchoolFilters();
+    setupAlertFilters();
+    setupAnalyticsRange();
+    setupModal();
+    fillSidebarInfo();
+
+    populateDistrictFilters();
+    renderOverview();
+    renderSchoolsTable();
+    renderAnalytics();
+    renderAlerts();
+    renderProfile();
+    updateAlertBadge();
+
+    U.hidePageLoading();
   }
-});
 
-// ─── Init ─────────────────────────────────────────────────────────────────────
-async function initGovDash() {
-  setupNavigation();
-  setupMobileSidebar();
-  setupLogout();
-  renderProfile();
-  await loadSchools();
-  setupAlertsListener();
-  setupAttendanceListener();
-  setupSchoolFilters();
-  setupAnalyticsRanges();
-  setupModal();
-}
+  function fillSidebarInfo() {
+    const el = document.getElementById('sidebar-username');
+    if (el) el.textContent = state.user.name;
+  }
 
-// ─── Navigation ───────────────────────────────────────────────────────────────
-function setupNavigation() {
-  document.querySelectorAll('.nav-item').forEach(item => {
-    item.addEventListener('click', () => {
-      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-      item.classList.add('active');
-      const section = item.dataset.section;
-      document.querySelectorAll('.page-section').forEach(s => s.classList.remove('active'));
-      document.getElementById(`section-${section}`).classList.add('active');
-      document.getElementById('sidebar').classList.remove('open');
-      document.getElementById('sidebar-overlay').classList.remove('show');
+  // ============================================================
+  // SIDEBAR / NAV
+  // ============================================================
+  function setupSidebar() {
+    const toggle = document.getElementById('sidebar-toggle');
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    function close() {
+      sidebar.classList.remove('open');
+      overlay.classList.remove('show');
+    }
+    if (toggle) toggle.addEventListener('click', () => {
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('show');
     });
-  });
-}
+    if (overlay) overlay.addEventListener('click', close);
+  }
 
-function setupMobileSidebar() {
-  const toggle  = document.getElementById('sidebar-toggle');
-  const sidebar = document.getElementById('sidebar');
-  const overlay = document.getElementById('sidebar-overlay');
-  toggle.addEventListener('click', () => {
-    sidebar.classList.toggle('open');
-    overlay.classList.toggle('show');
-  });
-  overlay.addEventListener('click', () => {
-    sidebar.classList.remove('open');
-    overlay.classList.remove('show');
-  });
-}
+  function setupNav() {
+    const items = document.querySelectorAll('#nav-links .nav-item');
+    items.forEach(item => {
+      item.addEventListener('click', () => {
+        const section = item.getAttribute('data-section');
+        switchSection(section);
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        if (sidebar && window.innerWidth <= 1024) {
+          sidebar.classList.remove('open');
+          if (overlay) overlay.classList.remove('show');
+        }
+      });
+    });
+  }
 
-function setupLogout() {
-  document.getElementById('logout-btn').addEventListener('click', async () => {
-    unsubs.forEach(fn => fn());
-    try {
-      await signOut(auth);
-    } catch (e) {
-      console.error('Logout failed:', e);
-    }
-    window.location.href = 'index.html';
-  });
-}
+  function switchSection(section) {
+    document.querySelectorAll('#nav-links .nav-item').forEach(n => {
+      n.classList.toggle('active', n.getAttribute('data-section') === section);
+    });
+    document.querySelectorAll('.page-section').forEach(s => {
+      s.classList.toggle('active', s.id === 'section-' + section);
+    });
+    if (section === 'overview')  setTimeout(renderOverviewCharts, 50);
+    if (section === 'analytics') setTimeout(renderAnalyticsCharts, 50);
+  }
 
-// ─── Load All Schools + Inventory ────────────────────────────────────────────
-async function loadSchools() {
-  try {
-    const schoolsSnap = await getDocs(collection(db, 'schools'));
-    const schools = [];
-    for (const sd of schoolsSnap.docs) {
-      const school = { id: sd.id, ...sd.data() };
-      // Fetch inventory
-      const invSnap = await getDoc(doc(db, 'schools', sd.id, 'inventory', 'stock'));
-      school.inventory = invSnap.exists() ? invSnap.data() : null;
-      schools.push(school);
-    }
-    allSchools = schools;
+  function setupLogout() {
+    const btn = document.getElementById('logout-btn');
+    if (btn) btn.addEventListener('click', window.PD_Auth.handleLogout);
+  }
 
-    // Populate district filters
-    const districts = [...new Set(schools.map(s => s.district).filter(Boolean))].sort();
-    ['district-filter', 'gov-alert-district'].forEach(id => {
-      const sel = document.getElementById(id);
+  // ============================================================
+  // POPULATE FILTERS
+  // ============================================================
+  function populateDistrictFilters() {
+    const districts = Array.from(new Set(D.getAllSchools().map(s => s.district))).sort();
+    [
+      document.getElementById('district-filter'),
+      document.getElementById('gov-alert-district')
+    ].forEach(sel => {
       if (!sel) return;
       districts.forEach(d => {
         const opt = document.createElement('option');
-        opt.value = d; opt.textContent = d;
+        opt.value = d;
+        opt.textContent = d;
         sel.appendChild(opt);
       });
     });
-
-    renderSchoolsTable(schools);
-    renderKPIs(schools);
-    renderInventoryHealthChart(schools);
-    renderStockDonutChart(schools);
-    renderSchoolComparisonChart(schools);
-  } catch (e) {
-    showToast('Failed to load schools.', 'error');
-    console.error(e);
   }
-}
 
-// ─── KPI Cards ────────────────────────────────────────────────────────────────
-function renderKPIs(schools) {
-  const active = schools.filter(s => s.status === 'active').length;
-  const totalEnroll = schools.reduce((sum, s) => sum + (s.enrollment || 0), 0);
+  // ============================================================
+  // OVERVIEW SECTION
+  // ============================================================
+  function renderOverview() {
+    const schoolsCount = D.getTotalActiveSchools();
+    const totalEnroll = D.getTotalEnrollment();
+    const todayMeals = D.getTodayTotalMealsServed();
+    const activeAlerts = D.getTotalActiveAlerts();
 
-  setText('kpi-schools', active);
-  setText('kpi-students', totalEnroll.toLocaleString('en-IN'));
-}
+    U.animateNumber(document.getElementById('kpi-schools'), schoolsCount, 800);
+    U.animateNumber(document.getElementById('kpi-students'), totalEnroll, 1000);
+    U.animateNumber(document.getElementById('kpi-meals-today'), todayMeals, 1000);
+    U.animateNumber(document.getElementById('kpi-active-alerts'), activeAlerts, 700);
 
-function updateMealsToday(attendance) {
-  const today = todayISO();
-  const todayRecs = attendance.filter(a => a.date === today);
-  const total = todayRecs.reduce((sum, r) => sum + (r.studentsPresent || 0), 0);
-  setText('kpi-meals-today', total.toLocaleString('en-IN'));
-}
+    renderOverviewAlertsFeed();
+    renderOverviewCharts();
+  }
 
-// ─── Alerts Listener ─────────────────────────────────────────────────────────
-function setupAlertsListener() {
-  const alertsQ = query(
-    collection(db, 'alerts'),
-    orderBy('timestamp', 'desc'),
-    limit(100)
-  );
-  const unsub = onSnapshot(alertsQ, snap => {
-    allAlerts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderOverviewAlerts(allAlerts.slice(0, 10));
-    renderGovAlerts(allAlerts);
-    updateAlertKPIs(allAlerts);
-    setText('kpi-active-alerts', allAlerts.filter(a => a.status === 'active').length);
+  function renderOverviewCharts() {
+    renderAttendanceTrendChart();
+    renderMealPieChart();
+    renderInventoryHealthChart();
+  }
+
+  function renderAttendanceTrendChart() {
+    const canvas = document.getElementById('ov-attendance-chart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    U.destroyChart(state.charts.attTrend);
+
+    const trend = D.getAttendanceTrendLast7Days();
+    const labels = trend.map(t => {
+      const p = t.date.split('-');
+      return p[2] + '/' + p[1];
+    });
+    const data = trend.map(t => t.totalStudents);
+    const colors = U.getChartColors();
+
+    state.charts.attTrend = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Total Students',
+          data: data,
+          borderColor: colors.primary,
+          backgroundColor: colors.primaryLight,
+          fill: true,
+          tension: 0.35,
+          pointRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, grid: { color: colors.grid }, ticks: { color: colors.text } },
+          x: { grid: { display: false }, ticks: { color: colors.text } }
+        }
+      }
+    });
+  }
+
+  function renderMealPieChart() {
+    const canvas = document.getElementById('ov-meal-pie-chart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    U.destroyChart(state.charts.mealPie);
+
+    const cons = D.getMealConsumptionLast30Days();
+    const colors = U.getChartColors();
+
+    state.charts.mealPie = new Chart(canvas, {
+      type: 'doughnut',
+      data: {
+        labels: ['Rice', 'Wheat', 'Dal'],
+        datasets: [{
+          data: [cons.totalRice, cons.totalWheat, cons.totalDal],
+          backgroundColor: [colors.primary, colors.warning, colors.secondary],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '60%',
+        plugins: {
+          legend: { position: 'bottom', labels: { color: colors.text, font: { size: 12 } } },
+          tooltip: { callbacks: { label: ctx => ctx.label + ': ' + ctx.parsed + ' kg' } }
+        }
+      }
+    });
+  }
+
+  function renderInventoryHealthChart() {
+    const canvas = document.getElementById('ov-inventory-chart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    U.destroyChart(state.charts.invHealth);
+
+    const data = D.getSchoolInventoryHealth();
+    const colors = U.getChartColors();
+    const labels = data.map(d => d.schoolName.replace('Government ', '').replace(' School,', ','));
+    const values = data.map(d => d.avgPercentage);
+    const bgColors = values.map(v => v < 20 ? colors.danger : (v < 50 ? colors.warning : colors.secondary));
+
+    state.charts.invHealth = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Avg Stock %',
+          data: values,
+          backgroundColor: bgColors,
+          borderRadius: 6
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ctx.parsed.x + '% avg stock' } }
+        },
+        scales: {
+          x: { beginAtZero: true, max: 100, grid: { color: colors.grid }, ticks: { color: colors.text, callback: v => v + '%' } },
+          y: { grid: { display: false }, ticks: { color: colors.text } }
+        }
+      }
+    });
+  }
+
+  function renderOverviewAlertsFeed() {
+    const feed = document.getElementById('ov-alerts-feed');
+    if (!feed) return;
+    const alerts = D.getActiveAlerts().slice(0, 10);
+    if (alerts.length === 0) {
+      feed.innerHTML = '<div class="empty-state"><i class="ph-bold ph-check-circle" style="color:var(--secondary)"></i><p>No active alerts across schools.</p></div>';
+      return;
+    }
+    feed.innerHTML = alerts.map(a => govAlertCardHtml(a, false)).join('');
+  }
+
+  // ============================================================
+  // SCHOOLS SECTION
+  // ============================================================
+  function setupSchoolFilters() {
+    const search = document.getElementById('school-search');
+    const district = document.getElementById('district-filter');
+    const status = document.getElementById('status-filter');
+    const sort = document.getElementById('sort-filter');
+    if (search)   search.addEventListener('input', () => { state.schoolFilters.search = search.value.trim().toLowerCase(); renderSchoolsTable(); });
+    if (district) district.addEventListener('change', () => { state.schoolFilters.district = district.value; renderSchoolsTable(); });
+    if (status)   status.addEventListener('change', () => { state.schoolFilters.status = status.value; renderSchoolsTable(); });
+    if (sort)     sort.addEventListener('change', () => { state.schoolFilters.sort = sort.value; renderSchoolsTable(); });
+  }
+
+  function renderSchoolsTable() {
+    const tbody = document.getElementById('schools-tbody');
+    if (!tbody) return;
+
+    let rows = D.getSchoolComparison();
+
+    // Filters
+    const f = state.schoolFilters;
+    if (f.search)   rows = rows.filter(r => r.name.toLowerCase().includes(f.search) || r.district.toLowerCase().includes(f.search));
+    if (f.district) rows = rows.filter(r => r.district === f.district);
+    if (f.status)   rows = rows.filter(r => r.status === f.status);
+
+    // Sort
+    if (f.sort === 'name')           rows.sort((a, b) => a.name.localeCompare(b.name));
+    else if (f.sort === 'enrollment') rows.sort((a, b) => b.enrollment - a.enrollment);
+    else if (f.sort === 'stock')      rows.sort((a, b) => a.avgStockPct - b.avgStockPct);
+
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="table-empty">No schools match your filters.</td></tr>';
+      return;
+    }
+
+    function pctCell(v) {
+      const cls = v < 20 ? 'text-critical' : (v < 50 ? 'text-low' : 'text-healthy');
+      return '<td><span class="' + cls + '" style="font-weight:600">' + v + '%</span></td>';
+    }
+
+    tbody.innerHTML = rows.map(r =>
+      '<tr>' +
+        '<td><strong>' + U.escapeHtml(r.name) + '</strong></td>' +
+        '<td>' + U.escapeHtml(r.district) + '</td>' +
+        '<td>' + r.enrollment + '</td>' +
+        pctCell(r.ricePct) +
+        pctCell(r.wheatPct) +
+        pctCell(r.dalPct) +
+        '<td><span class="badge ' + (r.status === 'active' ? 'badge-active' : 'badge-inactive') + '">' + (r.status === 'active' ? 'Active' : 'Inactive') + '</span></td>' +
+        '<td><button class="btn btn-sm btn-secondary" data-school-detail="' + U.escapeHtml(r.schoolId) + '"><i class="ph-bold ph-eye"></i> View</button></td>' +
+      '</tr>'
+    ).join('');
+
+    tbody.querySelectorAll('[data-school-detail]').forEach(btn => {
+      btn.addEventListener('click', () => openSchoolModal(btn.getAttribute('data-school-detail')));
+    });
+  }
+
+  // ============================================================
+  // SCHOOL DETAIL MODAL
+  // ============================================================
+  function setupModal() {
+    const close = document.getElementById('modal-close');
+    const backdrop = document.getElementById('school-modal-backdrop');
+    if (close)    close.addEventListener('click', closeSchoolModal);
+    if (backdrop) backdrop.addEventListener('click', e => { if (e.target === backdrop) closeSchoolModal(); });
+  }
+
+  function closeSchoolModal() {
+    const backdrop = document.getElementById('school-modal-backdrop');
+    if (backdrop) backdrop.classList.remove('show');
+  }
+
+  function openSchoolModal(schoolId) {
+    const school = D.getSchoolById(schoolId);
+    const inv = D.getInventoryBySchoolId(schoolId);
+    if (!school) return;
+    document.getElementById('modal-school-name').textContent = school.name;
+
+    const body = document.getElementById('modal-body');
+    const att = D.getAttendanceBySchool(schoolId).slice(0, 10);
+    const alerts = D.getAlertsBySchool(schoolId).slice(0, 10);
+
+    function invRow(item, data) {
+      const pct = U.getStockPercentage(data.current, data.max);
+      const cls = U.getStockHealthClass(data.current, data.max);
+      return '<div style="margin-bottom:0.875rem">' +
+        '<div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:0.3rem">' +
+          '<strong>' + item + '</strong>' +
+          '<span style="color:var(--text-secondary)">' + data.current + ' / ' + data.max + ' kg (' + pct + '%)</span>' +
+        '</div>' +
+        '<div class="progress-bar-wrap"><div class="progress-bar-fill ' + cls + '" style="width:' + pct + '%"></div></div>' +
+      '</div>';
+    }
+
+    body.innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem">' +
+        '<div><span style="font-size:0.75rem;color:var(--text-secondary);text-transform:uppercase">District</span><div style="font-weight:600">' + U.escapeHtml(school.district) + '</div></div>' +
+        '<div><span style="font-size:0.75rem;color:var(--text-secondary);text-transform:uppercase">Enrollment</span><div style="font-weight:600">' + school.enrollment + ' students</div></div>' +
+        '<div><span style="font-size:0.75rem;color:var(--text-secondary);text-transform:uppercase">Contact</span><div style="font-weight:600">' + U.escapeHtml(school.contactPerson) + '</div></div>' +
+        '<div><span style="font-size:0.75rem;color:var(--text-secondary);text-transform:uppercase">Status</span><div><span class="badge ' + (school.status === 'active' ? 'badge-active' : 'badge-inactive') + '">' + (school.status === 'active' ? 'Active' : 'Inactive') + '</span></div></div>' +
+      '</div>' +
+
+      '<h4 class="section-title">Inventory</h4>' +
+      (inv ? (invRow('Rice', inv.rice) + invRow('Wheat', inv.wheat) + invRow('Dal', inv.dal)) : '<p style="color:var(--text-secondary)">No inventory data.</p>') +
+
+      '<h4 class="section-title" style="margin-top:1.25rem">Recent Attendance (Last 10)</h4>' +
+      (att.length === 0
+        ? '<p style="color:var(--text-secondary);font-size:0.85rem">No attendance recorded.</p>'
+        : '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Present</th><th>Rice</th><th>Wheat</th><th>Dal</th></tr></thead><tbody>' +
+          att.map(a => '<tr><td>' + U.formatDate(a.date) + '</td><td><strong>' + a.studentsPresent + '</strong></td><td>' + a.riceUsed.toFixed(2) + '</td><td>' + a.wheatUsed.toFixed(2) + '</td><td>' + a.dalUsed.toFixed(2) + '</td></tr>').join('') +
+          '</tbody></table></div>'
+      ) +
+
+      '<h4 class="section-title" style="margin-top:1.25rem">Alerts (Recent)</h4>' +
+      (alerts.length === 0
+        ? '<p style="color:var(--text-secondary);font-size:0.85rem">No alerts for this school.</p>'
+        : alerts.map(a => govAlertCardHtml(a, false)).join('')
+      );
+
+    document.getElementById('school-modal-backdrop').classList.add('show');
+  }
+
+  // ============================================================
+  // ANALYTICS SECTION
+  // ============================================================
+  function setupAnalyticsRange() {
+    const tabs = document.querySelectorAll('#section-analytics .filter-tab');
+    tabs.forEach(t => {
+      t.addEventListener('click', () => {
+        tabs.forEach(x => x.classList.remove('active'));
+        t.classList.add('active');
+        state.analyticsRange = parseInt(t.getAttribute('data-range'), 10) || 7;
+        renderAnalytics();
+      });
+    });
+  }
+
+  function renderAnalytics() {
+    const n = state.analyticsRange;
+
+    const avgRate = D.getAvgAttendanceRateLastNDays(n);
+    const avgMeals = D.getAvgMealsPerSchoolPerDay(n);
+    const topSchool = D.getTopAttendanceSchool(n);
+    const topItem = D.getMostConsumedItem(n);
+
+    const elRate = document.getElementById('an-avg-att');
+    const elMeals = document.getElementById('an-avg-meals');
+    const elTop = document.getElementById('an-top-school');
+    const elItem = document.getElementById('an-top-item');
+
+    if (elRate)  elRate.textContent = avgRate + '%';
+    if (elMeals) U.animateNumber(elMeals, avgMeals, 700);
+    if (elTop) {
+      if (topSchool) {
+        // Truncate for display
+        const short = topSchool.schoolName.replace('Government ', '').split(',')[0];
+        elTop.textContent = short;
+        elTop.title = topSchool.schoolName + ' (' + topSchool.rate + '% rate)';
+        elTop.style.fontSize = '1rem';
+      } else elTop.textContent = '—';
+    }
+    if (elItem) {
+      elItem.textContent = topItem ? topItem.name : '—';
+      if (topItem) elItem.title = topItem.total + ' kg consumed';
+    }
+
+    renderAnalyticsCharts();
+  }
+
+  function renderAnalyticsCharts() {
+    renderConsumptionTrend();
+    renderDistrictPerformance();
+    renderSchoolAttendanceComparison();
+    renderStockDonut();
+  }
+
+  function renderConsumptionTrend() {
+    const canvas = document.getElementById('an-consumption-chart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    U.destroyChart(state.charts.consumption);
+
+    const daily = D.getDailyConsumptionLastNDays(state.analyticsRange);
+    const labels = daily.map(d => { const p = d.date.split('-'); return p[2] + '/' + p[1]; });
+    const colors = U.getChartColors();
+
+    state.charts.consumption = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'Rice (kg)',  data: daily.map(d => d.rice),  borderColor: colors.primary,   backgroundColor: 'transparent', tension: 0.3 },
+          { label: 'Wheat (kg)', data: daily.map(d => d.wheat), borderColor: colors.warning,   backgroundColor: 'transparent', tension: 0.3 },
+          { label: 'Dal (kg)',   data: daily.map(d => d.dal),   borderColor: colors.secondary, backgroundColor: 'transparent', tension: 0.3 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { color: colors.text, font: { size: 11 } } } },
+        scales: {
+          y: { beginAtZero: true, grid: { color: colors.grid }, ticks: { color: colors.text } },
+          x: { grid: { display: false }, ticks: { color: colors.text } }
+        }
+      }
+    });
+  }
+
+  function renderDistrictPerformance() {
+    const canvas = document.getElementById('an-district-chart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    U.destroyChart(state.charts.district);
+
+    const data = D.getDistrictWiseAttendance();
+    const labels = Object.keys(data);
+    const values = labels.map(l => data[l]);
+    const colors = U.getChartColors();
+
+    state.charts.district = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Avg Attendance Rate (%)',
+          data: values,
+          backgroundColor: colors.palette,
+          borderRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.parsed.y + '% attendance' } } },
+        scales: {
+          y: { beginAtZero: true, max: 100, grid: { color: colors.grid }, ticks: { color: colors.text, callback: v => v + '%' } },
+          x: { grid: { display: false }, ticks: { color: colors.text } }
+        }
+      }
+    });
+  }
+
+  function renderSchoolAttendanceComparison() {
+    const canvas = document.getElementById('an-school-chart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    U.destroyChart(state.charts.schoolComp);
+
+    const dates = U.getLastNDaysDates(state.analyticsRange);
+    const dateSet = new Set(dates);
+    const schools = D.getActiveSchools();
+    const all = D.getAllAttendance();
+
+    const dataPoints = schools.map(s => {
+      const recs = all.filter(a => a.schoolId === s.schoolId && dateSet.has(a.date));
+      const totalPresent = recs.reduce((sum, r) => sum + r.studentsPresent, 0);
+      const totalCapacity = recs.length * s.enrollment;
+      return totalCapacity > 0 ? Math.round((totalPresent / totalCapacity) * 1000) / 10 : 0;
+    });
+    const labels = schools.map(s => s.name.replace('Government ', '').split(',')[0]);
+    const colors = U.getChartColors();
+
+    state.charts.schoolComp = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Attendance Rate %',
+          data: dataPoints,
+          backgroundColor: colors.primary,
+          borderRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.parsed.y + '%' } } },
+        scales: {
+          y: { beginAtZero: true, max: 100, grid: { color: colors.grid }, ticks: { color: colors.text, callback: v => v + '%' } },
+          x: { grid: { display: false }, ticks: { color: colors.text } }
+        }
+      }
+    });
+  }
+
+  function renderStockDonut() {
+    const canvas = document.getElementById('an-stock-donut');
+    if (!canvas || typeof Chart === 'undefined') return;
+    U.destroyChart(state.charts.stockDonut);
+
+    const invs = D.getAllInventories();
+    let totalCurrent = 0, totalMax = 0;
+    invs.forEach(i => {
+      totalCurrent += (i.rice.current + i.wheat.current + i.dal.current);
+      totalMax += (i.rice.max + i.wheat.max + i.dal.max);
+    });
+    const used = Math.round(totalCurrent * 10) / 10;
+    const free = Math.round((totalMax - totalCurrent) * 10) / 10;
+    const colors = U.getChartColors();
+
+    state.charts.stockDonut = new Chart(canvas, {
+      type: 'doughnut',
+      data: {
+        labels: ['Currently Stocked', 'Empty Capacity'],
+        datasets: [{
+          data: [used, free],
+          backgroundColor: [colors.secondary, colors.grid],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '65%',
+        plugins: {
+          legend: { position: 'bottom', labels: { color: colors.text, font: { size: 12 } } },
+          tooltip: { callbacks: { label: ctx => ctx.label + ': ' + ctx.parsed + ' kg' } }
+        }
+      }
+    });
+  }
+
+  // ============================================================
+  // ALERTS SECTION
+  // ============================================================
+  function setupAlertFilters() {
+    const sev = document.getElementById('gov-alert-severity');
+    const stat = document.getElementById('gov-alert-status');
+    const dist = document.getElementById('gov-alert-district');
+    if (sev)  sev.addEventListener('change', () => { state.alertFilters.severity = sev.value; renderAlerts(); });
+    if (stat) stat.addEventListener('change', () => { state.alertFilters.status = stat.value; renderAlerts(); });
+    if (dist) dist.addEventListener('change', () => { state.alertFilters.district = dist.value; renderAlerts(); });
+  }
+
+  function updateAlertBadge() {
     const badge = document.getElementById('nav-alert-count');
-    const active = allAlerts.filter(a => a.status === 'active').length;
-    badge.style.display = active ? 'inline' : 'none';
-    badge.textContent = active;
-  }, err => console.error('Alerts err', err));
-  unsubs.push(unsub);
-}
-
-// ─── Attendance Listener ──────────────────────────────────────────────────────
-function setupAttendanceListener() {
-  const attQ = query(
-    collection(db, 'attendance'),
-    orderBy('timestamp', 'desc'),
-    limit(500)
-  );
-  const unsub = onSnapshot(attQ, snap => {
-    allAttendance = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    updateMealsToday(allAttendance);
-    renderOvAttendanceChart(allAttendance);
-    renderOvMealPieChart(allAttendance);
-    renderAnalytics(analyticsRange);
-  }, err => console.error('Attendance err', err));
-  unsubs.push(unsub);
-}
-
-// ─── Overview Charts ──────────────────────────────────────────────────────────
-function renderOvAttendanceChart(records) {
-  const ctx = document.getElementById('ov-attendance-chart');
-  if (!ctx) return;
-  const days = getLast7Days();
-  const labels = days.map(d => d.slice(5));
-  const map = {};
-  records.forEach(r => { map[r.date] = (map[r.date] || 0) + (r.studentsPresent || 0); });
-  const data = days.map(d => map[d] || 0);
-
-  if (charts.ovAtt) charts.ovAtt.destroy();
-  charts.ovAtt = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Total Students Served',
-        data,
-        borderColor: '#2563EB',
-        backgroundColor: 'rgba(37,99,235,0.12)',
-        fill: true,
-        tension: 0.4,
-        pointRadius: 5,
-        pointBackgroundColor: '#2563EB',
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
+    if (!badge) return;
+    const count = D.getActiveAlerts().length;
+    if (count > 0) {
+      badge.textContent = count;
+      badge.style.display = 'inline-flex';
+    } else {
+      badge.style.display = 'none';
     }
-  });
-}
-
-function renderOvMealPieChart(records) {
-  const ctx = document.getElementById('ov-meal-pie-chart');
-  if (!ctx) return;
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 30);
-  const recent = records.filter(r => {
-    const d = r.timestamp?.toDate ? r.timestamp.toDate() : new Date(r.date);
-    return d >= cutoff;
-  });
-  const totalRice  = recent.reduce((s, r) => s + (r.riceUsed  || 0), 0);
-  const totalWheat = recent.reduce((s, r) => s + (r.wheatUsed || 0), 0);
-  const totalDal   = recent.reduce((s, r) => s + (r.dalUsed   || 0), 0);
-
-  if (charts.ovPie) charts.ovPie.destroy();
-  charts.ovPie = new Chart(ctx, {
-    type: 'pie',
-    data: {
-      labels: ['Rice', 'Wheat', 'Dal'],
-      datasets: [{
-        data: [parseFloat(totalRice.toFixed(1)), parseFloat(totalWheat.toFixed(1)), parseFloat(totalDal.toFixed(1))],
-        backgroundColor: ['#2563EB', '#059669', '#F59E0B'],
-        borderWidth: 2, borderColor: '#fff',
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom' } }
-    }
-  });
-}
-
-function renderInventoryHealthChart(schools) {
-  const ctx = document.getElementById('ov-inventory-chart');
-  if (!ctx) return;
-  const filtered = schools.filter(s => s.inventory);
-
-  const labels = filtered.map(s => s.name.replace('Government ', '').replace(' School', ''));
-  const ricePcts  = filtered.map(s => stockPct(s.inventory.rice?.current  || 0, s.inventory.rice?.max  || 1));
-  const wheatPcts = filtered.map(s => stockPct(s.inventory.wheat?.current || 0, s.inventory.wheat?.max || 1));
-  const dalPcts   = filtered.map(s => stockPct(s.inventory.dal?.current   || 0, s.inventory.dal?.max   || 1));
-
-  if (charts.ovInv) charts.ovInv.destroy();
-  charts.ovInv = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        { label: 'Rice %',  data: ricePcts,  backgroundColor: 'rgba(37,99,235,0.7)'  },
-        { label: 'Wheat %', data: wheatPcts, backgroundColor: 'rgba(5,150,105,0.7)'  },
-        { label: 'Dal %',   data: dalPcts,   backgroundColor: 'rgba(245,158,11,0.7)' },
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'top' } },
-      scales: {
-        y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } },
-        x: { grid: { display: false } }
-      }
-    }
-  });
-}
-
-// ─── Overview Alerts Feed ─────────────────────────────────────────────────────
-function renderOverviewAlerts(alerts) {
-  const el = document.getElementById('ov-alerts-feed');
-  if (!alerts.length) {
-    el.innerHTML = `<div class="empty-state"><i class="ph-bold ph-check-circle"></i><p>No alerts.</p></div>`;
-    return;
   }
-  el.innerHTML = alerts.map(a => `
-    <div class="alert-card ${a.severity}">
-      <div class="alert-icon ${a.severity}">
-        <i class="ph-bold ph-${a.severity === 'critical' ? 'x-circle' : 'warning'}"></i>
-      </div>
-      <div class="alert-body">
-        <div class="alert-title">${sanitize(a.schoolName || '—')} — ${sanitize(a.title || '')}</div>
-        <div class="alert-message">${sanitize(a.message || '')}</div>
-        <div class="alert-meta">
-          <span class="badge badge-${a.severity === 'critical' ? 'critical' : 'warning'}">${a.severity}</span>
-          &bull; Item: <strong>${sanitize(a.item || '—')}</strong>
-          &bull; ${a.timestamp?.toDate ? timeAgo(a.timestamp.toDate()) : ''}
-          &bull; <span class="badge badge-${a.status === 'active' ? 'low' : 'resolved'}">${a.status}</span>
-        </div>
-      </div>
-    </div>
-  `).join('');
-}
 
-// ─── Schools Table ────────────────────────────────────────────────────────────
-function renderSchoolsTable(schools) {
-  const tbody = document.getElementById('schools-tbody');
-  if (!schools.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="table-empty">No schools found.</td></tr>`;
-    return;
-  }
-  tbody.innerHTML = schools.map(s => {
-    const inv    = s.inventory;
-    const rPct   = inv ? stockPct(inv.rice?.current  || 0, inv.rice?.max  || 1) : 0;
-    const wPct   = inv ? stockPct(inv.wheat?.current || 0, inv.wheat?.max || 1) : 0;
-    const dPct   = inv ? stockPct(inv.dal?.current   || 0, inv.dal?.max   || 1) : 0;
-    const rStat  = stockStatus(rPct), wStat = stockStatus(wPct), dStat = stockStatus(dPct);
-    return `
-      <tr data-school-id="${sanitize(s.id)}" data-district="${sanitize(s.district||'')}" data-status="${sanitize(s.status||'')}">
-        <td><strong>${sanitize(s.name)}</strong></td>
-        <td>${sanitize(s.district || '—')}</td>
-        <td>${(s.enrollment || 0).toLocaleString('en-IN')}</td>
-        <td>${miniStockCell(rPct, rStat)}</td>
-        <td>${miniStockCell(wPct, wStat)}</td>
-        <td>${miniStockCell(dPct, dStat)}</td>
-        <td><span class="badge badge-${s.status === 'active' ? 'active' : 'inactive'}">${s.status || '—'}</span></td>
-        <td><button class="btn btn-secondary btn-sm view-school-btn" data-id="${sanitize(s.id)}">
-          <i class="ph-bold ph-eye"></i> View
-        </button></td>
-      </tr>
-    `;
-  }).join('');
+  function renderAlerts() {
+    // Stats
+    const all = D.getAllAlerts();
+    const active = all.filter(a => a.status === 'active');
+    const warnings = active.filter(a => a.severity === 'warning').length;
+    const criticals = active.filter(a => a.severity === 'critical').length;
+    const top = D.getMostAlertedSchool();
 
-  // View buttons
-  tbody.querySelectorAll('.view-school-btn').forEach(btn => {
-    btn.addEventListener('click', () => openSchoolModal(btn.dataset.id));
-  });
-}
+    const wEl = document.getElementById('gov-warnings');
+    const cEl = document.getElementById('gov-criticals');
+    const mEl = document.getElementById('gov-most-alerted');
+    if (wEl) U.animateNumber(wEl, warnings, 700);
+    if (cEl) U.animateNumber(cEl, criticals, 700);
+    if (mEl) {
+      if (top) {
+        const short = top.schoolName.replace('Government ', '').split(',')[0];
+        mEl.textContent = short;
+        mEl.title = top.schoolName + ' (' + top.alertCount + ' alerts)';
+        mEl.style.fontSize = '1rem';
+      } else mEl.textContent = 'None';
+    }
 
-function miniStockCell(pct, stat) {
-  const color = stat === 'healthy' ? '#059669' : stat === 'low' ? '#F59E0B' : '#DC2626';
-  return `
-    <div class="stock-cell">
-      <span style="font-size:0.8rem;font-weight:600;color:${color};min-width:32px">${pct}%</span>
-      <div class="stock-mini-bar">
-        <div class="stock-mini-fill" style="width:${pct}%;background:${color}"></div>
-      </div>
-    </div>
-  `;
-}
+    // List
+    const list = document.getElementById('gov-alerts-list');
+    if (!list) return;
 
-// ─── School Filters ───────────────────────────────────────────────────────────
-function setupSchoolFilters() {
-  const searchEl   = document.getElementById('school-search');
-  const distEl     = document.getElementById('district-filter');
-  const statusEl   = document.getElementById('status-filter');
-  const sortEl     = document.getElementById('sort-filter');
+    let alerts = all.slice().sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    const f = state.alertFilters;
+    if (f.severity) alerts = alerts.filter(a => a.severity === f.severity);
+    if (f.status)   alerts = alerts.filter(a => a.status === f.status);
+    if (f.district) {
+      const schoolIds = D.getAllSchools().filter(s => s.district === f.district).map(s => s.schoolId);
+      alerts = alerts.filter(a => schoolIds.includes(a.schoolId));
+    }
 
-  function applyFilters() {
-    const search = searchEl.value.toLowerCase();
-    const dist   = distEl.value;
-    const status = statusEl.value;
-    const sort   = sortEl.value;
+    if (alerts.length === 0) {
+      list.innerHTML = '<div class="empty-state"><i class="ph-bold ph-bell-slash"></i><p>No alerts match your filters.</p></div>';
+      return;
+    }
+    list.innerHTML = alerts.map(a => govAlertCardHtml(a, true)).join('');
 
-    let filtered = allSchools.filter(s => {
-      if (search && !s.name.toLowerCase().includes(search)) return false;
-      if (dist   && s.district !== dist)  return false;
-      if (status && s.status   !== status) return false;
-      return true;
+    list.querySelectorAll('[data-resolve]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-resolve');
+        U.showConfirmDialog('Mark as resolved?', 'This alert will be moved to the Resolved view.', function () {
+          const result = D.resolveAlert(id);
+          if (result.success) {
+            U.showToast('Alert resolved.', 'success');
+            renderAlerts();
+            renderOverview();
+            updateAlertBadge();
+          } else {
+            U.showToast(result.error, 'error');
+          }
+        });
+      });
     });
-
-    filtered.sort((a, b) => {
-      if (sort === 'enrollment') return (b.enrollment || 0) - (a.enrollment || 0);
-      if (sort === 'stock') {
-        const aAvg = a.inventory ? avgStock(a.inventory) : 0;
-        const bAvg = b.inventory ? avgStock(b.inventory) : 0;
-        return aAvg - bAvg;
-      }
-      return a.name.localeCompare(b.name);
-    });
-
-    renderSchoolsTable(filtered);
   }
 
-  [searchEl, distEl, statusEl, sortEl].forEach(el => el?.addEventListener('input', applyFilters));
-}
+  function govAlertCardHtml(a, showResolveBtn) {
+    const sev = a.severity || 'warning';
+    const isResolved = a.status === 'resolved';
+    const iconCls = sev === 'critical' ? 'ph-warning-octagon' : 'ph-warning';
+    const badgeClass = sev === 'critical' ? 'badge-critical' : 'badge-warning';
+    const sevLabel = sev === 'critical' ? 'CRITICAL' : 'WARNING';
+    const cardCls = 'alert-card ' + (isResolved ? 'resolved' : sev);
+    const opacity = isResolved ? 'opacity:0.65;' : '';
 
-function avgStock(inv) {
-  const r = stockPct(inv.rice?.current  || 0, inv.rice?.max  || 1);
-  const w = stockPct(inv.wheat?.current || 0, inv.wheat?.max || 1);
-  const d = stockPct(inv.dal?.current   || 0, inv.dal?.max   || 1);
-  return (r + w + d) / 3;
-}
+    let actions = '';
+    if (showResolveBtn && !isResolved) {
+      actions = '<button class="btn btn-sm btn-success" data-resolve="' + U.escapeHtml(a.id) + '"><i class="ph-bold ph-check"></i> Resolve</button>';
+    } else if (isResolved) {
+      actions = '<span class="badge badge-resolved">Resolved</span>';
+    }
 
-// ─── School Detail Modal ──────────────────────────────────────────────────────
-function setupModal() {
-  document.getElementById('modal-close').addEventListener('click', closeModal);
-  document.getElementById('school-modal-backdrop').addEventListener('click', (e) => {
-    if (e.target === document.getElementById('school-modal-backdrop')) closeModal();
-  });
-}
-
-function closeModal() {
-  document.getElementById('school-modal-backdrop').classList.remove('show');
-}
-
-async function openSchoolModal(schoolId) {
-  const school = allSchools.find(s => s.id === schoolId);
-  if (!school) return;
-
-  document.getElementById('modal-school-name').textContent = school.name;
-  document.getElementById('school-modal-backdrop').classList.add('show');
-
-  const body = document.getElementById('modal-body');
-  body.innerHTML = '<div class="skeleton-row"><div class="skeleton"></div></div>';
-
-  // Fetch last 10 attendance records
-  const attQ = query(
-    collection(db, 'attendance'),
-    where('schoolId', '==', schoolId),
-    orderBy('date', 'desc'),
-    limit(10)
-  );
-  let attRecs;
-  try {
-    const attSnap = await getDocs(attQ);
-    attRecs = attSnap.docs.map(d => d.data());
-  } catch (e) {
-    console.error('Modal data load failed:', e);
-    body.innerHTML = '<p style="color:var(--danger);padding:1rem">Failed to load school data. Please try again.</p>';
-    return;
+    return '<div class="' + cardCls + '" style="' + opacity + '">' +
+      '<div class="alert-icon ' + sev + '"><i class="ph-bold ' + iconCls + '"></i></div>' +
+      '<div class="alert-body">' +
+        '<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-bottom:0.25rem">' +
+          '<span class="badge ' + badgeClass + '">' + sevLabel + '</span>' +
+          '<span class="badge badge-inactive">' + U.escapeHtml(a.item) + '</span>' +
+          '<strong style="font-size:0.85rem">' + U.escapeHtml(a.schoolName) + '</strong>' +
+        '</div>' +
+        '<div class="alert-title">' + U.escapeHtml(a.title) + '</div>' +
+        '<div class="alert-message">' + U.escapeHtml(a.message) + '</div>' +
+        '<div class="alert-meta">' + U.escapeHtml(U.getTimeAgo(a.timestamp)) + '</div>' +
+      '</div>' +
+      (actions ? '<div style="flex-shrink:0;align-self:center">' + actions + '</div>' : '') +
+    '</div>';
   }
 
-  const inv = school.inventory;
-  const rPct = inv ? stockPct(inv.rice?.current  || 0, inv.rice?.max  || 1) : 0;
-  const wPct = inv ? stockPct(inv.wheat?.current || 0, inv.wheat?.max || 1) : 0;
-  const dPct = inv ? stockPct(inv.dal?.current   || 0, inv.dal?.max   || 1) : 0;
-
-  const schoolAlerts = allAlerts.filter(a => a.schoolId === schoolId && a.status === 'active');
-
-  body.innerHTML = `
-    <div class="modal-detail-grid" style="margin-bottom:1.25rem">
-      <div class="modal-detail-item">
-        <span class="modal-detail-label">District</span>
-        <span class="modal-detail-val">${sanitize(school.district || '—')}</span>
-      </div>
-      <div class="modal-detail-item">
-        <span class="modal-detail-label">Enrollment</span>
-        <span class="modal-detail-val">${(school.enrollment || 0).toLocaleString('en-IN')}</span>
-      </div>
-      <div class="modal-detail-item">
-        <span class="modal-detail-label">Status</span>
-        <span class="badge badge-${school.status === 'active' ? 'active' : 'inactive'}">${school.status || '—'}</span>
-      </div>
-      <div class="modal-detail-item">
-        <span class="modal-detail-label">Contact</span>
-        <span class="modal-detail-val">${sanitize(school.contactPerson || '—')}</span>
-      </div>
-    </div>
-
-    <div class="section-title">Inventory Status</div>
-    ${inv ? `
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.25rem">
-      ${['rice','wheat','dal'].map(item => {
-        const cur = inv[item]?.current || 0, max = inv[item]?.max || 0;
-        const pct = stockPct(cur, max);
-        const stat = stockStatus(pct);
-        return `<div style="text-align:center">
-          <div style="font-weight:700;font-size:1.25rem;color:${stockColor(pct)}">${pct}%</div>
-          <div style="font-size:0.78rem;color:var(--text-secondary);text-transform:capitalize">${item}</div>
-          <div style="font-size:0.75rem">${cur}/${max} kg</div>
-          <div class="progress-bar-wrap" style="margin:0.4rem 0">
-            <div class="progress-bar-fill ${stat}" style="width:${pct}%"></div>
-          </div>
-        </div>`;
-      }).join('')}
-    </div>` : '<p style="color:var(--text-secondary);font-size:0.875rem">No inventory data.</p>'}
-
-    ${schoolAlerts.length ? `
-    <div class="section-title">Active Alerts (${schoolAlerts.length})</div>
-    <div style="margin-bottom:1.25rem">
-      ${schoolAlerts.map(a => `
-        <div class="alert-card ${a.severity}" style="margin-bottom:0.5rem">
-          <div class="alert-icon ${a.severity}"><i class="ph-bold ph-${a.severity === 'critical' ? 'x-circle' : 'warning'}"></i></div>
-          <div class="alert-body">
-            <div class="alert-title">${sanitize(a.title)}</div>
-            <div class="alert-message">${sanitize(a.message)}</div>
-          </div>
-        </div>
-      `).join('')}
-    </div>` : ''}
-
-    <div class="section-title">Last 10 Attendance Records</div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Date</th><th>Present</th><th>Rice (kg)</th><th>Wheat (kg)</th><th>Dal (kg)</th></tr></thead>
-        <tbody>
-          ${attRecs.length ? attRecs.map(r => `
-            <tr>
-              <td>${sanitize(r.date)}</td>
-              <td>${sanitize(String(r.studentsPresent || 0))}</td>
-              <td>${parseFloat(r.riceUsed || 0).toFixed(2)}</td>
-              <td>${parseFloat(r.wheatUsed || 0).toFixed(2)}</td>
-              <td>${parseFloat(r.dalUsed || 0).toFixed(2)}</td>
-            </tr>
-          `).join('') : `<tr><td colspan="5" class="table-empty">No attendance records.</td></tr>`}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-// ─── Analytics ────────────────────────────────────────────────────────────────
-function setupAnalyticsRanges() {
-  document.querySelectorAll('#section-analytics .filter-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('#section-analytics .filter-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      analyticsRange = parseInt(tab.dataset.range);
-      renderAnalytics(analyticsRange);
+  // ============================================================
+  // PROFILE SECTION
+  // ============================================================
+  function renderProfile() {
+    const map = {
+      'prof-name': state.user.name,
+      'prof-email': state.user.email,
+      'prof-district': state.user.district || '—'
+    };
+    Object.keys(map).forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = map[id];
     });
-  });
-}
-
-function renderAnalytics(days) {
-  const records = filterByDays(allAttendance, days);
-  renderConsumptionChart(records, days);
-  renderDistrictChart(records, days);
-  renderSchoolComparisonChart(allSchools);
-  renderStockDonutChart(allSchools);
-  renderAnalyticsKPIs(records);
-}
-
-function filterByDays(records, days) {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - days);
-  const cutoffDate = cutoff.toISOString().split('T')[0];
-  return records.filter(r => {
-    if (r.date) return r.date >= cutoffDate;
-    const d = r.timestamp?.toDate ? r.timestamp.toDate() : null;
-    return d && d >= cutoff;
-  });
-}
-
-function renderConsumptionChart(records, rangeLen) {
-  const ctx = document.getElementById('an-consumption-chart');
-  if (!ctx) return;
-
-  const days = Array.from({ length: rangeLen }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (rangeLen - 1 - i));
-    return d.toISOString().split('T')[0];
-  });
-
-  const riceMap = {}, wheatMap = {}, dalMap = {};
-  records.forEach(r => {
-    riceMap[r.date]  = (riceMap[r.date]  || 0) + (r.riceUsed  || 0);
-    wheatMap[r.date] = (wheatMap[r.date] || 0) + (r.wheatUsed || 0);
-    dalMap[r.date]   = (dalMap[r.date]   || 0) + (r.dalUsed   || 0);
-  });
-
-  const labels = days.map(d => d.slice(5));
-  if (charts.consumption) charts.consumption.destroy();
-  charts.consumption = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        { label: 'Rice (kg)',  data: days.map(d => +(riceMap[d]  || 0).toFixed(1)), borderColor: '#2563EB', fill: false, tension: 0.4 },
-        { label: 'Wheat (kg)', data: days.map(d => +(wheatMap[d] || 0).toFixed(1)), borderColor: '#059669', fill: false, tension: 0.4 },
-        { label: 'Dal (kg)',   data: days.map(d => +(dalMap[d]   || 0).toFixed(1)), borderColor: '#F59E0B', fill: false, tension: 0.4 },
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'top' } },
-      scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
-    }
-  });
-}
-
-function renderDistrictChart(records, days) {
-  const ctx = document.getElementById('an-district-chart');
-  if (!ctx) return;
-
-  // Map schoolId → district
-  const schoolDistMap = {};
-  allSchools.forEach(s => { schoolDistMap[s.id] = s.district; });
-
-  const distMap = {}, distCount = {};
-  records.forEach(r => {
-    const dist = schoolDistMap[r.schoolId] || 'Unknown';
-    distMap[dist]  = (distMap[dist]  || 0) + (r.studentsPresent || 0);
-    distCount[dist] = (distCount[dist] || 0) + 1;
-  });
-
-  const labels = Object.keys(distMap);
-  const data   = labels.map(d => distCount[d] ? Math.round(distMap[d] / distCount[d]) : 0);
-
-  if (charts.district) charts.district.destroy();
-  charts.district = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{ label: 'Avg Daily Attendance', data, backgroundColor: '#2563EB' }]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: { x: { beginAtZero: true }, y: { grid: { display: false } } }
-    }
-  });
-}
-
-function renderSchoolComparisonChart(schools) {
-  const ctx = document.getElementById('an-school-chart');
-  if (!ctx) return;
-
-  const recentMap = {};
-  const last30 = filterByDays(allAttendance, 30);
-  last30.forEach(r => { recentMap[r.schoolId] = (recentMap[r.schoolId] || 0) + (r.studentsPresent || 0); });
-
-  // Sort by total attendance descending so the top-performing schools are shown first
-  const top10 = [...schools]
-    .sort((a, b) => (recentMap[b.id] || 0) - (recentMap[a.id] || 0))
-    .slice(0, 10);
-
-  const labels = top10.map(s => s.name.split(' ').slice(-1)[0]);
-  const data   = top10.map(s => recentMap[s.id] || 0);
-
-  if (charts.schoolComp) charts.schoolComp.destroy();
-  charts.schoolComp = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{ label: 'Students Served (30d)', data, backgroundColor: 'rgba(37,99,235,0.75)' }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
-    }
-  });
-}
-
-function renderStockDonutChart(schools) {
-  const ctx = document.getElementById('an-stock-donut');
-  if (!ctx) return;
-
-  let totalCur = 0, totalMax = 0;
-  schools.forEach(s => {
-    if (!s.inventory) return;
-    ['rice', 'wheat', 'dal'].forEach(item => {
-      totalCur += s.inventory[item]?.current || 0;
-      totalMax += s.inventory[item]?.max     || 0;
-    });
-  });
-  const used    = +(totalCur).toFixed(1);
-  const remaining = +(totalMax - totalCur).toFixed(1);
-
-  if (charts.stockDonut) charts.stockDonut.destroy();
-  charts.stockDonut = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: ['Current Stock (kg)', 'Empty Capacity (kg)'],
-      datasets: [{
-        data: [used, remaining > 0 ? remaining : 0],
-        backgroundColor: ['#2563EB', '#E2E8F0'],
-        borderWidth: 2, borderColor: '#fff'
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom' } }
-    }
-  });
-}
-
-function renderAnalyticsKPIs(records) {
-  if (!records.length) return;
-
-  const totalStudents = records.reduce((s, r) => s + (r.studentsPresent || 0), 0);
-  const totalDays     = new Set(records.map(r => r.date)).size;
-  const totalSchools  = new Set(records.map(r => r.schoolId)).size;
-
-  const avgMeals = totalSchools > 0 && totalDays > 0
-    ? Math.round(totalStudents / totalSchools / totalDays * 10) / 10
-    : 0;
-
-  const totalEnroll = allSchools.reduce((s, s2) => s + (s2.enrollment || 0), 0);
-  const avgAttRate  = totalEnroll > 0
-    ? `${Math.min(100, Math.round(totalStudents / totalEnroll / Math.max(totalDays, 1) * 100))}%`
-    : '—';
-
-  // Most consumed item
-  const riceTotal  = records.reduce((s, r) => s + (r.riceUsed  || 0), 0);
-  const wheatTotal = records.reduce((s, r) => s + (r.wheatUsed || 0), 0);
-  const dalTotal   = records.reduce((s, r) => s + (r.dalUsed   || 0), 0);
-  const topItem = riceTotal >= wheatTotal && riceTotal >= dalTotal ? 'Rice'
-                : wheatTotal >= dalTotal ? 'Wheat' : 'Dal';
-
-  // Top school
-  const schoolTotals = {};
-  records.forEach(r => { schoolTotals[r.schoolId] = (schoolTotals[r.schoolId] || 0) + (r.studentsPresent || 0); });
-  const topSchoolId = Object.keys(schoolTotals).sort((a, b) => schoolTotals[b] - schoolTotals[a])[0];
-  const topSchool   = allSchools.find(s => s.id === topSchoolId);
-
-  setText('an-avg-att',   avgAttRate);
-  setText('an-avg-meals', avgMeals);
-  setText('an-top-school', topSchool ? topSchool.name.split(' ').slice(-2).join(' ') : '—');
-  setText('an-top-item',  topItem);
-}
-
-// ─── Govt Alerts ──────────────────────────────────────────────────────────────
-function updateAlertKPIs(alerts) {
-  const active   = alerts.filter(a => a.status === 'active');
-  const warnings = active.filter(a => a.severity === 'warning').length;
-  const crits    = active.filter(a => a.severity === 'critical').length;
-
-  setText('gov-warnings', warnings);
-  setText('gov-criticals', crits);
-
-  // Most alerted school
-  const counts = {};
-  active.forEach(a => { counts[a.schoolName || a.schoolId] = (counts[a.schoolName || a.schoolId] || 0) + 1; });
-  const topSchoolName = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
-  setText('gov-most-alerted', topSchoolName || '—');
-}
-
-function renderGovAlerts(alerts) {
-  const sevFilter  = document.getElementById('gov-alert-severity')?.value || '';
-  const statFilter = document.getElementById('gov-alert-status')?.value || 'active';
-  const distFilter = document.getElementById('gov-alert-district')?.value || '';
-
-  const schoolDistMap = {};
-  allSchools.forEach(s => { schoolDistMap[s.id] = s.district; });
-
-  const filtered = alerts.filter(a => {
-    if (sevFilter  && a.severity !== sevFilter) return false;
-    if (statFilter && a.status   !== statFilter) return false;
-    if (distFilter && schoolDistMap[a.schoolId] !== distFilter) return false;
-    return true;
-  });
-
-  const el = document.getElementById('gov-alerts-list');
-  if (!filtered.length) {
-    el.innerHTML = `<div class="empty-state"><i class="ph-bold ph-bell-slash"></i><p>No alerts match the filter.</p></div>`;
-    return;
   }
 
-  el.innerHTML = `
-    <div class="readonly-notice">
-      <i class="ph-bold ph-eye"></i>
-      Government view is read-only. Schools manage their own alerts.
-    </div>
-    ${filtered.map(a => `
-      <div class="alert-card ${a.severity}">
-        <div class="alert-icon ${a.severity}">
-          <i class="ph-bold ph-${a.severity === 'critical' ? 'x-circle' : 'warning'}"></i>
-        </div>
-        <div class="alert-body">
-          <div class="alert-title">
-            <strong>${sanitize(a.schoolName || '—')}</strong> — ${sanitize(a.title || '')}
-          </div>
-          <div class="alert-message">${sanitize(a.message || '')}</div>
-          <div class="alert-meta">
-            <span class="badge badge-${a.severity === 'critical' ? 'critical' : 'warning'}">${a.severity}</span>
-            &bull; Item: <strong>${sanitize(a.item || '—')}</strong>
-            &bull; ${a.timestamp?.toDate ? timeAgo(a.timestamp.toDate()) : ''}
-            &bull; <span class="badge badge-${a.status === 'active' ? 'low' : 'resolved'}">${a.status}</span>
-          </div>
-        </div>
-      </div>
-    `).join('')}
-  `;
-}
-
-// Attach filter events for gov alerts
-['gov-alert-severity', 'gov-alert-status', 'gov-alert-district'].forEach(id => {
-  document.getElementById(id)?.addEventListener('change', () => renderGovAlerts(allAlerts));
-});
-
-// ─── Profile ──────────────────────────────────────────────────────────────────
-function renderProfile() {
-  setText('prof-name',     userDoc?.name || currentUser?.email || '—');
-  setText('prof-email',    currentUser?.email || '—');
-  setText('prof-district', userDoc?.district || '—');
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function hidePageLoading() {
-  const el = document.getElementById('page-loading');
-  if (el) el.style.display = 'none';
-}
-
-function setText(id, val) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = val;
-}
+  // ============================================================
+  // BOOT
+  // ============================================================
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
