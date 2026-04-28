@@ -1,574 +1,631 @@
 /* ============================================================
-   POSHAN DARPAN — SCHOOL ADMIN DASHBOARD
-   Five sections: Overview, Inventory, Attendance, Alerts, Profile.
-   Pure frontend; reads/writes via window.PD_Data.
-   ============================================================ */
+   POSHAN DARPAN - SCHOOL DASHBOARD CONTROLLER
+============================================================ */
 
-(function () {
-  'use strict';
+let CURRENT_USER = null;
+let CURRENT_SCHOOL = null;
+let ALERT_FILTER = "all";
 
-  const D = window.PD_Data;
-  const U = window.PD_Utils;
+document.addEventListener("DOMContentLoaded", () => {
+  initDataStore();
+  CURRENT_USER = guardRoute("school");
+  if (!CURRENT_USER) return;
 
-  // ============================================================
-  // STATE
-  // ============================================================
-  const state = {
-    user: null,
-    school: null,
-    alertFilter: 'all',
-    attendanceChart: null
+  CURRENT_SCHOOL = getSchoolById(CURRENT_USER.schoolId);
+  if (!CURRENT_SCHOOL) {
+    showToast("School not found for this account.", "error");
+    return;
+  }
+
+  initSidebarUserInfo();
+  setupNav();
+  setupMobileMenu();
+  setupLogout();
+  setupAddStockForm();
+  setupAttendanceForm();
+  setupAlertFilters();
+
+  // Initial render
+  renderHeaderForSection("overview");
+  renderOverview();
+  refreshAlertBadge();
+  document.getElementById("todayLabel").textContent = formatDate(todayStr());
+});
+
+// ---------- USER INFO ----------
+
+function initSidebarUserInfo() {
+  document.getElementById("userName").textContent = CURRENT_USER.name;
+  document.getElementById("userAvatar").textContent = CURRENT_USER.name.charAt(0).toUpperCase();
+  document.getElementById("schoolNameSub").textContent = CURRENT_SCHOOL.name;
+}
+
+// ---------- NAVIGATION ----------
+
+function setupNav() {
+  qsa(".nav-item", document.getElementById("sidebarNav")).forEach(btn => {
+    btn.addEventListener("click", () => {
+      const section = btn.dataset.section;
+      switchSection(section);
+    });
+  });
+}
+
+function switchSection(section) {
+  qsa(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.section === section));
+  qsa(".content-section").forEach(s => s.classList.remove("active"));
+  const target = document.getElementById("section-" + section);
+  if (target) {
+    target.classList.add("active", "fade-in");
+    setTimeout(() => target.classList.remove("fade-in"), 500);
+  }
+  renderHeaderForSection(section);
+
+  if (section === "overview")    renderOverview();
+  if (section === "inventory")   renderInventory();
+  if (section === "attendance")  renderAttendance();
+  if (section === "alerts")      renderAlerts();
+  if (section === "profile")     renderProfile();
+
+  // Close mobile menu after switching
+  document.getElementById("sidebar").classList.remove("open");
+  document.getElementById("sidebarOverlay").classList.remove("show");
+}
+
+function renderHeaderForSection(section) {
+  const titles = {
+    overview:   "Overview",
+    inventory:  "Inventory Management",
+    attendance: "Attendance & Meals",
+    alerts:     "Alerts",
+    profile:    "Profile"
   };
+  document.getElementById("pageTitle").textContent = titles[section] || "Dashboard";
+}
 
-  // ============================================================
-  // INIT
-  // ============================================================
-  function init() {
-    state.user = window.PD_Auth.guardRoute('school');
-    if (!state.user) return;
-    state.school = D.getSchoolById(state.user.schoolId);
-    if (!state.school) {
-      U.showToast('School record not found. Please contact admin.', 'error');
-      return;
-    }
+// ---------- MOBILE MENU ----------
 
-    setupSidebar();
-    setupNav();
-    setupLogout();
-    setupAttendanceForm();
-    setupAddStockForm();
-    setupAlertTabs();
-    fillSidebarInfo();
-    renderAll();
+function setupMobileMenu() {
+  const sidebar  = document.getElementById("sidebar");
+  const overlay  = document.getElementById("sidebarOverlay");
+  const toggle   = document.getElementById("menuToggle");
+  toggle.addEventListener("click", () => {
+    sidebar.classList.toggle("open");
+    overlay.classList.toggle("show");
+  });
+  overlay.addEventListener("click", () => {
+    sidebar.classList.remove("open");
+    overlay.classList.remove("show");
+  });
+}
 
-    U.hidePageLoading();
+// ---------- LOGOUT ----------
+
+function setupLogout() {
+  document.getElementById("logoutBtn").addEventListener("click", handleLogout);
+}
+
+// ---------- ALERT BADGE ----------
+
+function refreshAlertBadge() {
+  const count = getActiveAlertCountBySchool(CURRENT_SCHOOL.schoolId);
+  const badge = document.getElementById("alertBadge");
+  if (count > 0) {
+    badge.textContent = String(count);
+    badge.classList.remove("zero");
+    badge.classList.add("pulse");
+  } else {
+    badge.textContent = "0";
+    badge.classList.add("zero");
+    badge.classList.remove("pulse");
   }
+}
 
-  // ============================================================
-  // SIDEBAR / NAV
-  // ============================================================
-  function fillSidebarInfo() {
-    const nameEl = document.getElementById('sidebar-username');
-    if (nameEl) nameEl.textContent = state.user.name;
+// =============================================================
+// SECTION 1: OVERVIEW
+// =============================================================
+
+function renderOverview() {
+  renderOverviewInvCards();
+  renderOverviewStats();
+  renderRecentActivity();
+  renderOverviewAlerts();
+}
+
+function renderOverviewInvCards() {
+  const inv = getInventory(CURRENT_SCHOOL.schoolId);
+  const wrap = document.getElementById("overviewInvCards");
+  if (!inv) { wrap.innerHTML = ""; return; }
+
+  const items = [
+    { key: "rice",  label: "Rice",  icon: "ph-grains",          color: "amber"  },
+    { key: "wheat", label: "Wheat", icon: "ph-bowl-food",       color: "purple" },
+    { key: "dal",   label: "Dal",   icon: "ph-circles-three",   color: "green"  }
+  ];
+
+  wrap.innerHTML = items.map(it => {
+    const slot = inv[it.key];
+    const pct = stockPercent(slot.current, slot.max);
+    const color = pct > 50 ? "green" : (pct >= 20 ? "amber" : "red");
+    return '' +
+      '<div class="inv-kpi">' +
+      '  <div class="inv-kpi-top">' +
+      '    <div class="kpi-icon-circle ' + it.color + '"><i class="ph ' + it.icon + '"></i></div>' +
+      '    <div>' +
+      '      <div class="inv-kpi-name">' + it.label + '</div>' +
+      '      <div class="inv-kpi-value">' + slot.current + ' / ' + slot.max + ' kg</div>' +
+      '    </div>' +
+      '  </div>' +
+      '  <div class="progress"><div class="progress-bar ' + color + '" style="width:' + pct + '%"></div></div>' +
+      '  <div class="inv-kpi-bar"><span>' + pct + '% in stock</span><span class="badge ' + stockBadgeClass(slot.current, slot.max) + '">' + stockLabel(slot.current, slot.max) + '</span></div>' +
+      '</div>';
+  }).join("");
+}
+
+function renderOverviewStats() {
+  const today = getTodaysAttendance(CURRENT_SCHOOL.schoolId);
+  const enrollEl = document.getElementById("kpiEnrollment");
+  enrollEl.textContent = "0";
+  animateCounter(enrollEl, CURRENT_SCHOOL.enrollment, 900);
+
+  const att = document.getElementById("kpiTodayAtt");
+  const meals = document.getElementById("kpiTodayMeals");
+
+  if (today) {
+    att.textContent = "0";
+    animateCounter(att, today.studentsPresent, 900);
+    meals.textContent = "0";
+    animateCounter(meals, today.studentsPresent, 900);
+  } else {
+    att.textContent = "Not submitted";
+    att.style.fontSize = "16px";
+    meals.textContent = "—";
   }
+}
 
-  function setupSidebar() {
-    const toggle = document.getElementById('sidebar-toggle');
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('sidebar-overlay');
-    function close() {
-      sidebar.classList.remove('open');
-      overlay.classList.remove('show');
-    }
-    if (toggle) toggle.addEventListener('click', () => {
-      sidebar.classList.toggle('open');
-      overlay.classList.toggle('show');
-    });
-    if (overlay) overlay.addEventListener('click', close);
+function renderRecentActivity() {
+  const wrap = document.getElementById("recentActivityList");
+  const recs = getAttendanceBySchool(CURRENT_SCHOOL.schoolId).slice(0, 5);
+  if (recs.length === 0) {
+    wrap.innerHTML =
+      '<div class="empty-list"><i class="ph ph-tray"></i>No activity yet.<br>Submit attendance to see recent records.</div>';
+    return;
   }
+  wrap.innerHTML = recs.map(r =>
+    '<div class="list-item">' +
+    '  <span class="dot green"></span>' +
+    '  <div style="flex:1;min-width:0;">' +
+    '    <div class="list-item-title">' + r.studentsPresent + ' students attended</div>' +
+    '    <div class="list-item-meta">' + formatDateTime(r.timestamp) + '</div>' +
+    '  </div>' +
+    '</div>'
+  ).join("");
+}
 
-  function setupNav() {
-    const items = document.querySelectorAll('#nav-links .nav-item');
-    items.forEach(item => {
-      item.addEventListener('click', () => {
-        const section = item.getAttribute('data-section');
-        switchSection(section);
-        // Close sidebar on mobile
-        const sidebar = document.getElementById('sidebar');
-        const overlay = document.getElementById('sidebar-overlay');
-        if (sidebar && window.innerWidth <= 1024) {
-          sidebar.classList.remove('open');
-          if (overlay) overlay.classList.remove('show');
-        }
-      });
-    });
+function renderOverviewAlerts() {
+  const wrap = document.getElementById("overviewAlertsList");
+  const active = getAlertsBySchool(CURRENT_SCHOOL.schoolId).filter(a => a.status === "active");
+  if (active.length === 0) {
+    wrap.innerHTML =
+      '<div class="empty-list">' +
+      '<i class="ph-fill ph-check-circle" style="color:var(--secondary);"></i>' +
+      'All systems healthy.<br>No active alerts.' +
+      '</div>';
+    return;
   }
+  wrap.innerHTML = active.slice(0, 5).map(a => {
+    const dotClass = a.severity === "critical" ? "red" : "amber";
+    return '' +
+    '<div class="list-item">' +
+    '  <span class="dot ' + dotClass + '"></span>' +
+    '  <div style="flex:1;min-width:0;">' +
+    '    <div class="list-item-title">' + escapeHtml(a.title) + '</div>' +
+    '    <div class="list-item-meta">' + timeAgo(a.timestamp) + '</div>' +
+    '  </div>' +
+    '</div>';
+  }).join("");
+}
 
-  function switchSection(section) {
-    document.querySelectorAll('#nav-links .nav-item').forEach(n => {
-      n.classList.toggle('active', n.getAttribute('data-section') === section);
-    });
-    document.querySelectorAll('.page-section').forEach(s => {
-      s.classList.toggle('active', s.id === 'section-' + section);
-    });
-    if (section === 'attendance') renderAttendanceChart();
+// =============================================================
+// SECTION 2: INVENTORY
+// =============================================================
+
+function renderInventory() {
+  renderLargeInvCards();
+  renderTransactionTable();
+  setupStockHint();
+}
+
+function renderLargeInvCards() {
+  const inv = getInventory(CURRENT_SCHOOL.schoolId);
+  const wrap = document.getElementById("largeInvCards");
+  if (!inv) { wrap.innerHTML = ""; return; }
+  const items = [
+    { key: "rice",  label: "Rice",  icon: "ph-grains",        color: "amber"  },
+    { key: "wheat", label: "Wheat", icon: "ph-bowl-food",     color: "purple" },
+    { key: "dal",   label: "Dal",   icon: "ph-circles-three", color: "green"  }
+  ];
+  wrap.innerHTML = items.map(it => {
+    const slot = inv[it.key];
+    const pct = stockPercent(slot.current, slot.max);
+    const color = pct > 50 ? "green" : (pct >= 20 ? "amber" : "red");
+    return '' +
+      '<div class="large-inv-card">' +
+      '  <div class="large-inv-head">' +
+      '    <div class="large-inv-name"><i class="ph ' + it.icon + '" style="color:var(--' + (it.color === 'amber' ? 'warning' : it.color === 'purple' ? 'purple' : 'secondary') + ');"></i>' + it.label + '</div>' +
+      '    <span class="badge ' + stockBadgeClass(slot.current, slot.max) + '">' + stockLabel(slot.current, slot.max) + '</span>' +
+      '  </div>' +
+      '  <div>' +
+      '    <div class="large-inv-current">' + slot.current + ' kg</div>' +
+      '    <div class="large-inv-max">of ' + slot.max + ' kg capacity</div>' +
+      '  </div>' +
+      '  <div class="progress"><div class="progress-bar ' + color + '" style="width:' + pct + '%"></div></div>' +
+      '  <div class="flex-between text-sm text-secondary">' +
+      '    <span>' + pct + '% available</span>' +
+      '    <span>Updated ' + timeAgo(inv.lastUpdated) + '</span>' +
+      '  </div>' +
+      '</div>';
+  }).join("");
+}
+
+function renderTransactionTable() {
+  const tbody = document.querySelector("#txTable tbody");
+  const txs = getTransactionsBySchool(CURRENT_SCHOOL.schoolId).slice(0, 20);
+  if (txs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-light);">No transactions yet.</td></tr>';
+    return;
   }
-
-  function setupLogout() {
-    const btn = document.getElementById('logout-btn');
-    if (btn) btn.addEventListener('click', window.PD_Auth.handleLogout);
-  }
-
-  // ============================================================
-  // RENDER ALL
-  // ============================================================
-  function renderAll() {
-    renderOverview();
-    renderInventory();
-    renderTransactions();
-    renderAttendanceHistory();
-    renderAlerts();
-    renderProfile();
-    updateAlertBadge();
-  }
-
-  function updateAlertBadge() {
-    const badge = document.getElementById('nav-alert-count');
-    if (!badge) return;
-    const count = D.getActiveAlertsBySchool(state.school.schoolId).length;
-    if (count > 0) {
-      badge.textContent = count;
-      badge.style.display = 'inline-flex';
-    } else {
-      badge.style.display = 'none';
-    }
-  }
-
-  // ============================================================
-  // OVERVIEW SECTION
-  // ============================================================
-  function renderOverview() {
-    const inv = D.getInventoryBySchoolId(state.school.schoolId);
-    if (!inv) return;
-
-    renderKpiBar('rice',  inv.rice);
-    renderKpiBar('wheat', inv.wheat);
-    renderKpiBar('dal',   inv.dal);
-
-    // Quick stats
-    const enrollEl = document.getElementById('ov-enrollment');
-    const todayAttEl = document.getElementById('ov-today-att');
-    const mealsTodayEl = document.getElementById('ov-meals-today');
-
-    const today = U.getTodayDateString();
-    const todayAtt = D.getAttendanceBySchool(state.school.schoolId).find(a => a.date === today);
-    const todayCount = todayAtt ? todayAtt.studentsPresent : 0;
-
-    if (enrollEl)    U.animateNumber(enrollEl, state.school.enrollment, 700);
-    if (todayAttEl)  U.animateNumber(todayAttEl, todayCount, 700);
-    if (mealsTodayEl) U.animateNumber(mealsTodayEl, todayCount, 700);
-
-    // Recent activity (last 5 attendance)
-    const recent = D.getAttendanceBySchool(state.school.schoolId).slice(0, 5);
-    const recentEl = document.getElementById('recent-activity');
-    if (recentEl) {
-      if (recent.length === 0) {
-        recentEl.innerHTML = '<div class="empty-state"><i class="ph-bold ph-clipboard-text"></i><p>No attendance recorded yet.</p></div>';
-      } else {
-        recentEl.innerHTML = recent.map(r =>
-          '<div class="activity-item">' +
-            '<div class="activity-dot"></div>' +
-            '<div style="flex:1">' +
-              '<div class="activity-text">' + U.escapeHtml(r.studentsPresent) + ' students attended on ' + U.escapeHtml(U.formatDate(r.date)) + '</div>' +
-              '<div class="activity-meta">' + U.escapeHtml(U.formatDateTime(r.timestamp)) + ' • ' + r.riceUsed.toFixed(1) + ' kg rice, ' + r.dalUsed.toFixed(1) + ' kg dal</div>' +
-            '</div>' +
-          '</div>'
-        ).join('');
-      }
-    }
-
-    // Active alerts preview
-    const activeAlerts = D.getActiveAlertsBySchool(state.school.schoolId);
-    const alertsEl = document.getElementById('ov-active-alerts');
-    if (alertsEl) {
-      if (activeAlerts.length === 0) {
-        alertsEl.innerHTML =
-          '<div style="display:flex;gap:0.6rem;align-items:center;padding:0.75rem;background:var(--success-light);border-radius:var(--radius-sm)">' +
-            '<i class="ph-bold ph-check-circle" style="color:var(--secondary);font-size:1.25rem"></i>' +
-            '<span style="font-size:0.875rem;color:var(--secondary);font-weight:600">All clear! No active alerts.</span>' +
-          '</div>';
-      } else {
-        alertsEl.innerHTML = activeAlerts.slice(0, 4).map(a => alertCardHtml(a, false)).join('');
-      }
-    }
-  }
-
-  function renderKpiBar(item, data) {
-    const valEl = document.getElementById('kpi-' + item + '-val');
-    const barEl = document.getElementById('kpi-' + item + '-bar');
-    const pctEl = document.getElementById('kpi-' + item + '-pct');
-    if (!data || !valEl) return;
-    const pct = U.getStockPercentage(data.current, data.max);
-    const cls = U.getStockHealthClass(data.current, data.max);
-    valEl.textContent = data.current + ' / ' + data.max + ' kg';
-    if (barEl) {
-      barEl.style.width = pct + '%';
-      barEl.className = 'progress-bar-fill ' + cls;
-    }
-    if (pctEl) pctEl.textContent = pct + '% — ' + U.getStockHealthLabel(data.current, data.max);
-  }
-
-  // ============================================================
-  // INVENTORY SECTION
-  // ============================================================
-  function renderInventory() {
-    const inv = D.getInventoryBySchoolId(state.school.schoolId);
-    if (!inv) return;
-    ['rice', 'wheat', 'dal'].forEach(item => {
-      const data = inv[item];
-      const cur = document.getElementById('inv-' + item + '-current');
-      const max = document.getElementById('inv-' + item + '-max');
-      const bar = document.getElementById('inv-' + item + '-bar');
-      const pctEl = document.getElementById('inv-' + item + '-pct');
-      const badge = document.getElementById('inv-' + item + '-badge');
-      const pct = U.getStockPercentage(data.current, data.max);
-      const cls = U.getStockHealthClass(data.current, data.max);
-      const label = U.getStockHealthLabel(data.current, data.max);
-      if (cur) cur.textContent = data.current + ' kg';
-      if (max) max.textContent = data.max;
-      if (bar) {
-        bar.style.width = pct + '%';
-        bar.className = 'progress-bar-fill ' + cls;
-      }
-      if (pctEl) pctEl.textContent = pct + '%';
-      if (badge) {
-        badge.textContent = label;
-        badge.className = 'badge ' + U.getStockBadgeClass(data.current, data.max);
-      }
-    });
-  }
-
-  function renderTransactions() {
-    const txns = D.getTransactionsBySchool(state.school.schoolId).slice(0, 30);
-    const tbody = document.getElementById('txn-tbody');
-    if (!tbody) return;
-    if (txns.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" class="table-empty">No transactions yet.</td></tr>';
-      return;
-    }
-    tbody.innerHTML = txns.map(t => {
-      const isAdd = t.type === 'addition';
-      const badgeClass = isAdd ? 'badge-active' : 'badge-warning';
-      const typeLabel = isAdd ? 'Added' : 'Deducted';
-      return '<tr>' +
-        '<td>' + U.escapeHtml(U.formatDateTime(t.timestamp)) + '</td>' +
-        '<td>' + U.escapeHtml(t.item) + '</td>' +
-        '<td><span class="badge ' + badgeClass + '">' + typeLabel + '</span></td>' +
-        '<td>' + (isAdd ? '+' : '−') + t.quantity + ' kg</td>' +
-        '<td style="color:var(--text-secondary);font-size:0.85rem">' + U.escapeHtml(t.reason) + '</td>' +
+  tbody.innerHTML = txs.map(t => {
+    const typeBadge = t.type === "addition"
+      ? '<span class="badge badge-success"><span class="badge-dot" style="background:var(--secondary);"></span>Added</span>'
+      : '<span class="badge badge-danger"><span class="badge-dot" style="background:var(--danger);"></span>Deducted</span>';
+    return '<tr>' +
+      '<td>' + formatDateTime(t.timestamp) + '</td>' +
+      '<td>' + escapeHtml(t.item) + '</td>' +
+      '<td>' + typeBadge + '</td>' +
+      '<td>' + t.quantity.toFixed(1) + '</td>' +
+      '<td>' + escapeHtml(t.reason) + '</td>' +
       '</tr>';
-    }).join('');
+  }).join("");
+}
+
+function setupStockHint() {
+  const itemSel = document.getElementById("stockItem");
+  const qtyInput = document.getElementById("stockQty");
+  const hint    = document.getElementById("stockHint");
+  const hintTxt = document.getElementById("stockHintText");
+
+  function update() {
+    const k = itemSel.value;
+    if (!k) { hint.style.display = "none"; return; }
+    const inv = getInventory(CURRENT_SCHOOL.schoolId);
+    const slot = inv[k];
+    const remaining = parseFloat((slot.max - slot.current).toFixed(2));
+    hint.style.display = "flex";
+    const label = k.charAt(0).toUpperCase() + k.slice(1);
+    hintTxt.innerHTML = '<b>' + label + ':</b> You can add up to <b>' + remaining + ' kg</b> (capacity: ' + slot.max + ' kg, current: ' + slot.current + ' kg).';
+    qtyInput.max = remaining;
   }
 
-  function setupAddStockForm() {
-    const form = document.getElementById('add-stock-form');
-    if (!form) return;
-    form.addEventListener('submit', e => {
-      e.preventDefault();
-      document.getElementById('stock-item-error').classList.remove('show');
-      document.getElementById('stock-qty-error').classList.remove('show');
+  itemSel.removeEventListener("change", update);
+  itemSel.addEventListener("change", update);
+}
 
-      const item = document.getElementById('stock-item').value;
-      const qty = Number(document.getElementById('stock-qty').value);
-      let valid = true;
-      if (!item) {
-        const e1 = document.getElementById('stock-item-error');
-        e1.textContent = 'Please select an item.';
-        e1.classList.add('show');
-        valid = false;
-      }
-      if (!isFinite(qty) || qty <= 0) {
-        const e2 = document.getElementById('stock-qty-error');
-        e2.textContent = 'Enter a valid positive quantity.';
-        e2.classList.add('show');
-        valid = false;
-      }
-      if (!valid) return;
+function setupAddStockForm() {
+  const form = document.getElementById("addStockForm");
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const itemSel  = document.getElementById("stockItem");
+    const qtyInput = document.getElementById("stockQty");
+    const item = itemSel.value;
+    const qty  = parseFloat(qtyInput.value);
 
-      const result = D.addStock(state.school.schoolId, item, qty);
-      if (!result.success) {
-        U.showToast(result.error, 'error');
-        return;
-      }
-      U.showToast('Added ' + qty + ' kg of ' + item + ' successfully!', 'success');
-      form.reset();
-      renderInventory();
-      renderTransactions();
-      renderOverview();
-      renderAlerts();
-      updateAlertBadge();
-    });
-  }
+    if (!item) return showToast("Please select an item", "warning");
+    if (!isPositiveNum(qty)) return showToast("Quantity must be greater than 0", "warning");
 
-  // ============================================================
-  // ATTENDANCE SECTION
-  // ============================================================
-  function setupAttendanceForm() {
-    const form = document.getElementById('attendance-form');
-    if (!form) return;
-    const dateInput = document.getElementById('att-date');
-    const studentsInput = document.getElementById('att-students');
-    const enrollHint = document.getElementById('att-enrollment-hint');
-    const previewBox = document.getElementById('att-preview');
-    const prevRice = document.getElementById('prev-rice');
-    const prevWheat = document.getElementById('prev-wheat');
-    const prevDal = document.getElementById('prev-dal');
-    const submitBtn = document.getElementById('att-submit-btn');
-
-    // Default today; max today
-    const today = U.getTodayDateString();
-    dateInput.value = today;
-    dateInput.max = today;
-    if (enrollHint) enrollHint.textContent = 'Max enrollment: ' + state.school.enrollment;
-    studentsInput.max = state.school.enrollment;
-
-    function updatePreview() {
-      const count = Number(studentsInput.value);
-      if (!isFinite(count) || count <= 0) {
-        previewBox.style.display = 'none';
-        return;
-      }
-      const rice  = (count * D.PORTION.rice).toFixed(2);
-      const wheat = (count * D.PORTION.wheat).toFixed(2);
-      const dal   = (count * D.PORTION.dal).toFixed(2);
-      prevRice.textContent  = rice + ' kg';
-      prevWheat.textContent = wheat + ' kg';
-      prevDal.textContent   = dal + ' kg';
-
-      // Check stock sufficiency, color cells
-      const inv = D.getInventoryBySchoolId(state.school.schoolId);
-      function paint(el, need, have) {
-        el.style.color = need > have ? 'var(--danger)' : 'var(--text-primary)';
-      }
-      paint(prevRice,  Number(rice),  inv.rice.current);
-      paint(prevWheat, Number(wheat), inv.wheat.current);
-      paint(prevDal,   Number(dal),   inv.dal.current);
-
-      previewBox.style.display = 'block';
+    const result = addStock(CURRENT_SCHOOL.schoolId, item, qty);
+    if (!result.success) {
+      showToast(result.error, "error");
+      return;
     }
 
-    studentsInput.addEventListener('input', updatePreview);
-    dateInput.addEventListener('change', updatePreview);
+    const itemLabel = item.charAt(0).toUpperCase() + item.slice(1);
+    logTransaction(CURRENT_SCHOOL.schoolId, "addition", itemLabel, qty, "Stock delivery");
 
-    form.addEventListener('submit', e => {
-      e.preventDefault();
-      document.getElementById('att-date-error').classList.remove('show');
-      document.getElementById('att-students-error').classList.remove('show');
+    showToast("Added " + qty + " kg of " + itemLabel + " successfully!", "success");
+    form.reset();
+    document.getElementById("stockHint").style.display = "none";
 
-      const date = dateInput.value;
-      const count = Number(studentsInput.value);
+    renderLargeInvCards();
+    renderTransactionTable();
+    refreshAlertBadge();
+    renderOverviewInvCards();
+  });
+}
 
-      let valid = true;
-      if (!date) {
-        const ed = document.getElementById('att-date-error');
-        ed.textContent = 'Date is required.';
-        ed.classList.add('show');
-        valid = false;
-      } else if (U.isDateInFuture(date)) {
-        const ed = document.getElementById('att-date-error');
-        ed.textContent = 'Cannot submit for a future date.';
-        ed.classList.add('show');
-        valid = false;
-      }
-      if (!isFinite(count) || count <= 0 || !Number.isInteger(count)) {
-        const es = document.getElementById('att-students-error');
-        es.textContent = 'Enter a positive whole number.';
-        es.classList.add('show');
-        valid = false;
-      } else if (count > state.school.enrollment) {
-        const es = document.getElementById('att-students-error');
-        es.textContent = 'Cannot exceed enrollment of ' + state.school.enrollment + '.';
-        es.classList.add('show');
-        valid = false;
-      }
-      if (!valid) return;
+// =============================================================
+// SECTION 3: ATTENDANCE
+// =============================================================
 
-      U.showConfirmDialog(
-        'Submit attendance?',
-        'Submit ' + count + ' students for ' + U.formatDate(date) + '? This will deduct food from inventory.',
-        function () {
-          submitBtn.disabled = true;
-          const result = D.submitAttendance(state.school.schoolId, date, count);
-          submitBtn.disabled = false;
-          if (!result.success) {
-            U.showToast(result.error, 'error');
-            return;
+function renderAttendance() {
+  const dateInput = document.getElementById("attDate");
+  dateInput.max = todayStr();
+  if (!dateInput.value) dateInput.value = todayStr();
+
+  document.getElementById("attMaxHint").textContent = "Max: " + CURRENT_SCHOOL.enrollment + " (total enrollment)";
+
+  renderAttendanceTable();
+  updateAttendancePreview();
+}
+
+function renderAttendanceTable() {
+  const tbody = document.querySelector("#attTable tbody");
+  const recs = getAttendanceBySchool(CURRENT_SCHOOL.schoolId).slice(0, 30);
+  if (recs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-light);">No attendance records yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = recs.map(r =>
+    '<tr>' +
+    '<td>' + formatDate(r.date) + '</td>' +
+    '<td>' + r.studentsPresent + '</td>' +
+    '<td>' + r.riceUsed.toFixed(1) + '</td>' +
+    '<td>' + r.wheatUsed.toFixed(1) + '</td>' +
+    '<td>' + r.dalUsed.toFixed(2) + '</td>' +
+    '</tr>'
+  ).join("");
+}
+
+function setupAttendanceForm() {
+  const dateInput = document.getElementById("attDate");
+  const cntInput  = document.getElementById("attCount");
+  dateInput.addEventListener("change", updateAttendancePreview);
+  cntInput.addEventListener("input", updateAttendancePreview);
+
+  document.getElementById("attendanceForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const dateStr = dateInput.value;
+    const count   = parseInt(cntInput.value, 10);
+
+    if (!dateStr)             return showToast("Please select a date", "warning");
+    if (isFutureDate(dateStr)) return showToast("Cannot select future date", "warning");
+    if (!count || count < 1)  return showToast("Enter a valid student count", "warning");
+
+    const result = submitAttendance(CURRENT_SCHOOL.schoolId, dateStr, count);
+    if (!result.success) {
+      showToast(result.error, "error");
+      return;
+    }
+
+    const d = result.data;
+    showToast(
+      "Attendance recorded: " + count + " students. " +
+      "Rice: " + d.riceUsed + "kg, Wheat: " + d.wheatUsed + "kg, Dal: " + d.dalUsed + "kg",
+      "success"
+    );
+
+    if (d.alertsGenerated && d.alertsGenerated.length > 0) {
+      d.alertsGenerated.forEach(a => {
+        showToast(a.title, a.severity === "critical" ? "error" : "warning");
+      });
+    }
+
+    cntInput.value = "";
+    document.getElementById("attPreview").style.display = "none";
+
+    renderAttendanceTable();
+    refreshAlertBadge();
+    renderOverviewInvCards();
+    renderOverviewStats();
+    renderRecentActivity();
+    renderOverviewAlerts();
+  });
+}
+
+function updateAttendancePreview() {
+  const dateInput = document.getElementById("attDate");
+  const cntInput  = document.getElementById("attCount");
+  const preview   = document.getElementById("attPreview");
+  const submitBtn = document.getElementById("attSubmitBtn");
+  const warn      = document.getElementById("prWarn");
+  const warnText  = document.getElementById("prWarnText");
+
+  const date = dateInput.value;
+  const count = parseInt(cntInput.value, 10);
+
+  if (!count || count < 1) {
+    preview.style.display = "none";
+    submitBtn.disabled = true;
+    return;
+  }
+
+  // Show preview
+  const rice  = parseFloat((count * 0.1).toFixed(2));
+  const wheat = parseFloat((count * 0.1).toFixed(2));
+  const dal   = parseFloat((count * 0.03).toFixed(2));
+  document.getElementById("prRice").textContent  = " " + rice;
+  document.getElementById("prWheat").textContent = " " + wheat;
+  document.getElementById("prDal").textContent   = " " + dal;
+  preview.style.display = "block";
+
+  // Validate
+  let canSubmit = true;
+  let warnMsg = "";
+
+  if (!date) { canSubmit = false; }
+  else if (isFutureDate(date)) {
+    warnMsg = "Cannot select future date";
+    canSubmit = false;
+  } else if (checkDuplicateAttendance(CURRENT_SCHOOL.schoolId, date)) {
+    warnMsg = "Attendance already submitted for " + formatDate(date);
+    canSubmit = false;
+  }
+
+  if (count > CURRENT_SCHOOL.enrollment) {
+    warnMsg = "Students present (" + count + ") cannot exceed enrollment (" + CURRENT_SCHOOL.enrollment + ")";
+    canSubmit = false;
+  }
+
+  // Stock check
+  if (canSubmit) {
+    const inv = getInventory(CURRENT_SCHOOL.schoolId);
+    if (inv.rice.current < rice) {
+      warnMsg = "Insufficient Rice stock! Need " + rice + " kg, but only " + inv.rice.current + " kg available.";
+      canSubmit = false;
+    } else if (inv.wheat.current < wheat) {
+      warnMsg = "Insufficient Wheat stock! Need " + wheat + " kg, but only " + inv.wheat.current + " kg available.";
+      canSubmit = false;
+    } else if (inv.dal.current < dal) {
+      warnMsg = "Insufficient Dal stock! Need " + dal + " kg, but only " + inv.dal.current + " kg available.";
+      canSubmit = false;
+    }
+  }
+
+  if (warnMsg) {
+    warn.classList.add("show");
+    warnText.textContent = warnMsg;
+  } else {
+    warn.classList.remove("show");
+  }
+
+  submitBtn.disabled = !canSubmit;
+}
+
+// =============================================================
+// SECTION 4: ALERTS
+// =============================================================
+
+function setupAlertFilters() {
+  qsa("#alertFilterTabs .filter-tab").forEach(btn => {
+    btn.addEventListener("click", () => {
+      qsa("#alertFilterTabs .filter-tab").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      ALERT_FILTER = btn.dataset.filter;
+      renderAlerts();
+    });
+  });
+}
+
+function renderAlerts() {
+  const all = getAlertsBySchool(CURRENT_SCHOOL.schoolId);
+  const active = all.filter(a => a.status === "active");
+  const resolved = all.filter(a => a.status === "resolved");
+
+  // Update counts
+  const counts = { all: all.length, active: active.length, resolved: resolved.length };
+  qsa('[data-count]', document.getElementById("alertFilterTabs")).forEach(el => {
+    el.textContent = "(" + counts[el.dataset.count] + ")";
+  });
+
+  let list;
+  if (ALERT_FILTER === "active")        list = active;
+  else if (ALERT_FILTER === "resolved") list = resolved;
+  else                                  list = all;
+
+  const container = document.getElementById("alertsListContainer");
+  if (list.length === 0) {
+    container.innerHTML =
+      '<div class="card empty-state">' +
+      '<i class="ph ph-bell-slash"></i>' +
+      '<div class="empty-state-title">No alerts found</div>' +
+      '<div class="empty-state-msg">' +
+      (ALERT_FILTER === "active" ? "No active alerts. Everything is healthy."
+        : ALERT_FILTER === "resolved" ? "No resolved alerts yet."
+        : "No alerts have been raised for your school.") +
+      '</div></div>';
+    return;
+  }
+
+  container.innerHTML = list.map(a => alertCardHtml(a, true)).join("");
+
+  // Wire resolve buttons
+  qsa('.alert-action [data-resolve]', container).forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.resolve;
+      showConfirmDialog(
+        "Resolve Alert",
+        "Are you sure this issue has been addressed?",
+        () => {
+          const r = resolveAlert(id);
+          if (r.success) {
+            showToast("Alert resolved", "success");
+            renderAlerts();
+            refreshAlertBadge();
+            renderOverviewAlerts();
+          } else {
+            showToast(r.error || "Could not resolve", "error");
           }
-          U.showToast('Attendance submitted! Deducted ' +
-            result.summary.riceDeducted + ' kg rice, ' +
-            result.summary.wheatDeducted + ' kg wheat, ' +
-            result.summary.dalDeducted + ' kg dal.', 'success');
-          form.reset();
-          dateInput.value = U.getTodayDateString();
-          previewBox.style.display = 'none';
-          renderAll();
-          renderAttendanceChart();
         }
       );
     });
-  }
+  });
+}
 
-  function renderAttendanceHistory() {
-    const records = D.getAttendanceBySchool(state.school.schoolId).slice(0, 30);
-    const tbody = document.getElementById('att-history-tbody');
-    if (!tbody) return;
-    if (records.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" class="table-empty">No attendance records yet.</td></tr>';
-      return;
-    }
-    tbody.innerHTML = records.map(r =>
-      '<tr>' +
-        '<td>' + U.escapeHtml(U.formatDate(r.date)) + '</td>' +
-        '<td><strong>' + r.studentsPresent + '</strong></td>' +
-        '<td>' + r.riceUsed.toFixed(2) + '</td>' +
-        '<td>' + r.wheatUsed.toFixed(2) + '</td>' +
-        '<td>' + r.dalUsed.toFixed(2) + '</td>' +
-      '</tr>'
-    ).join('');
-  }
+function alertCardHtml(a, allowResolve) {
+  const severityClass = a.status === "resolved"
+    ? "alert-resolved"
+    : (a.severity === "critical" ? "alert-critical" : "alert-warning");
 
-  function renderAttendanceChart() {
-    const canvas = document.getElementById('att-chart');
-    if (!canvas || typeof Chart === 'undefined') return;
-    U.destroyChart(state.attendanceChart);
+  const iconClass = a.status === "resolved"
+    ? "done"
+    : (a.severity === "critical" ? "crit" : "warn");
 
-    const last7 = U.getLast7DaysDates();
-    const all = D.getAttendanceBySchool(state.school.schoolId);
-    const data = last7.map(d => {
-      const rec = all.find(a => a.date === d);
-      return rec ? rec.studentsPresent : 0;
-    });
-    const labels = last7.map(d => {
-      const parts = d.split('-');
-      return parts[2] + '/' + parts[1];
-    });
-    const colors = U.getChartColors();
+  const iconName = a.status === "resolved"
+    ? "ph-check-circle"
+    : (a.severity === "critical" ? "ph-warning-octagon" : "ph-warning");
 
-    state.attendanceChart = new Chart(canvas, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'Students Present',
-          data: data,
-          borderColor: colors.primary,
-          backgroundColor: colors.primaryLight,
-          fill: true,
-          tension: 0.35,
-          pointBackgroundColor: colors.primary,
-          pointRadius: 4,
-          pointHoverRadius: 6
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          y: { beginAtZero: true, grid: { color: colors.grid }, ticks: { color: colors.text } },
-          x: { grid: { display: false }, ticks: { color: colors.text } }
-        }
-      }
-    });
-  }
+  const sevBadge = a.severity === "critical"
+    ? '<span class="badge badge-danger">CRITICAL</span>'
+    : '<span class="badge badge-warning">WARNING</span>';
 
-  // ============================================================
-  // ALERTS SECTION
-  // ============================================================
-  function setupAlertTabs() {
-    const tabs = document.querySelectorAll('#alerts-tabs .filter-tab');
-    tabs.forEach(t => {
-      t.addEventListener('click', () => {
-        tabs.forEach(x => x.classList.remove('active'));
-        t.classList.add('active');
-        state.alertFilter = t.getAttribute('data-filter');
-        renderAlerts();
-      });
-    });
-  }
+  const action = (allowResolve && a.status === "active")
+    ? '<div class="alert-action"><button class="btn btn-outline btn-sm" data-resolve="' + a.id + '"><i class="ph ph-check"></i> Resolve</button></div>'
+    : '<div class="alert-action"></div>';
 
-  function renderAlerts() {
-    const list = document.getElementById('alerts-list');
-    if (!list) return;
-    let alerts = D.getAlertsBySchool(state.school.schoolId);
-    if (state.alertFilter === 'active')   alerts = alerts.filter(a => a.status === 'active');
-    if (state.alertFilter === 'resolved') alerts = alerts.filter(a => a.status === 'resolved');
+  const resolvedStamp = a.status === "resolved" && a.resolvedAt
+    ? '<div class="alert-resolved-stamp">Resolved on ' + formatDateTime(a.resolvedAt) + '</div>'
+    : '';
 
-    if (alerts.length === 0) {
-      list.innerHTML = '<div class="empty-state"><i class="ph-bold ph-bell-slash"></i><p>No alerts found in this view.</p></div>';
-      return;
-    }
-    list.innerHTML = alerts.map(a => alertCardHtml(a, true)).join('');
-
-    // wire up resolve buttons
-    list.querySelectorAll('[data-resolve]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-resolve');
-        U.showConfirmDialog('Mark as resolved?', 'This alert will be moved to the Resolved tab.', function () {
-          const result = D.resolveAlert(id);
-          if (result.success) {
-            U.showToast('Alert resolved.', 'success');
-            renderAlerts();
-            renderOverview();
-            updateAlertBadge();
-          } else {
-            U.showToast(result.error, 'error');
-          }
-        });
-      });
-    });
-  }
-
-  function alertCardHtml(a, showResolveBtn) {
-    const sev = a.severity || 'warning';
-    const isResolved = a.status === 'resolved';
-    const iconCls = sev === 'critical' ? 'ph-warning-octagon' : 'ph-warning';
-    const badgeClass = sev === 'critical' ? 'badge-critical' : 'badge-warning';
-    const sevLabel = sev === 'critical' ? 'CRITICAL' : 'WARNING';
-    const cardCls = 'alert-card ' + (isResolved ? 'resolved' : sev);
-    const opacity = isResolved ? 'opacity:0.65;' : '';
-
-    let actions = '';
-    if (showResolveBtn && !isResolved) {
-      actions = '<button class="btn btn-sm btn-success" data-resolve="' + U.escapeHtml(a.id) + '"><i class="ph-bold ph-check"></i> Resolve</button>';
-    } else if (isResolved) {
-      actions = '<span class="badge badge-resolved">Resolved ' + U.escapeHtml(U.formatDate((a.resolvedAt || '').split('T')[0])) + '</span>';
-    }
-
-    return '<div class="' + cardCls + '" style="' + opacity + '">' +
-      '<div class="alert-icon ' + sev + '"><i class="ph-bold ' + iconCls + '"></i></div>' +
-      '<div class="alert-body">' +
-        '<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-bottom:0.25rem">' +
-          '<span class="badge ' + badgeClass + '">' + sevLabel + '</span>' +
-          '<span class="badge badge-inactive">' + U.escapeHtml(a.item) + '</span>' +
-        '</div>' +
-        '<div class="alert-title">' + U.escapeHtml(a.title) + '</div>' +
-        '<div class="alert-message">' + U.escapeHtml(a.message) + '</div>' +
-        '<div class="alert-meta">' + U.escapeHtml(U.getTimeAgo(a.timestamp)) + '</div>' +
-      '</div>' +
-      (actions ? '<div style="flex-shrink:0;align-self:center">' + actions + '</div>' : '') +
+  return '' +
+    '<div class="alert-card ' + severityClass + '">' +
+    '  <div class="alert-icon ' + iconClass + '"><i class="ph-fill ' + iconName + '"></i></div>' +
+    '  <div class="alert-body">' +
+    '    <div class="alert-meta">' + sevBadge + '<span class="badge badge-info">' + escapeHtml(a.item) + '</span>' +
+    '      <span class="alert-time">' + timeAgo(a.timestamp) + '</span></div>' +
+    '    <div class="alert-title">' + escapeHtml(a.title) + '</div>' +
+    '    <div class="alert-message">' + escapeHtml(a.message) + '</div>' +
+    resolvedStamp +
+    '  </div>' +
+    action +
     '</div>';
-  }
+}
 
-  // ============================================================
-  // PROFILE SECTION
-  // ============================================================
-  function renderProfile() {
-    const map = {
-      'prof-name': state.user.name,
-      'prof-email': state.user.email,
-      'prof-school-name': state.school.name,
-      'prof-district': state.school.district,
-      'prof-enrollment': state.school.enrollment + ' students',
-      'prof-contact': state.school.contactPerson
-    };
-    Object.keys(map).forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = map[id];
-    });
-    const status = document.getElementById('prof-status');
-    if (status) {
-      status.textContent = state.school.status === 'active' ? 'Active' : 'Inactive';
-      status.className = 'badge ' + (state.school.status === 'active' ? 'badge-active' : 'badge-inactive');
-    }
-  }
+// =============================================================
+// SECTION 5: PROFILE
+// =============================================================
 
-  // ============================================================
-  // BOOT
-  // ============================================================
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
-})();
+function renderProfile() {
+  const sch = CURRENT_SCHOOL;
+  const u = CURRENT_USER;
+  const statusBadge = sch.status === "active"
+    ? '<span class="badge badge-success"><span class="badge-dot" style="background:var(--secondary);"></span>Active</span>'
+    : '<span class="badge badge-grey">Inactive</span>';
+
+  document.getElementById("profileSchool").innerHTML = '' +
+    profileRow("School Name", sch.name) +
+    profileRow("District", sch.district) +
+    profileRow("Total Enrollment", sch.enrollment + " students") +
+    profileRow("Status", statusBadge) +
+    profileRow("Contact Person", sch.contactPerson) +
+    profileRow("Contact Email", sch.contactEmail);
+
+  document.getElementById("profileAccount").innerHTML = '' +
+    profileRow("Full Name", u.name) +
+    profileRow("Email", u.email) +
+    profileRow("Role", "School Administrator") +
+    profileRow("Member Since", u.createdAt ? formatDate(u.createdAt.split("T")[0]) : "—");
+}
+
+function profileRow(label, value) {
+  return '<div class="profile-row"><span class="label">' + label + '</span><span class="value">' + value + '</span></div>';
+}

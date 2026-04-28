@@ -4,440 +4,254 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>School Dashboard — Poshan Darpan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web" />
   <link rel="stylesheet" href="css/global.css" />
   <link rel="stylesheet" href="css/school-dashboard.css" />
-  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/bold/style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <!-- Full-page loading overlay: shown by default, hidden after auth check passes -->
-  <div class="page-loading" id="page-loading">
-    <div class="spinner"></div>
-    <p>Loading…</p>
-  </div>
+  <div class="dashboard">
 
-  <div id="toast-container"></div>
-
-  <!-- Sidebar toggle (mobile) -->
-  <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Menu">
-    <i class="ph-bold ph-list"></i>
-  </button>
-  <div class="sidebar-overlay" id="sidebar-overlay"></div>
-
-  <div class="app-layout">
-    <!-- ── Sidebar ─────────────────────────────────────────────────── -->
-    <nav class="sidebar" id="sidebar">
-      <div class="sidebar-logo">
-        <div class="logo-text">Poshan Darpan</div>
-        <div class="logo-sub">पोषण दर्पण — Nutrition Mirror</div>
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-icon"><i class="ph-fill ph-bowl-food"></i></div>
+        <div class="sidebar-brand-text">
+          <div class="b1">Poshan Darpan</div>
+          <div class="b2">SCHOOL PORTAL</div>
+        </div>
       </div>
 
-      <ul class="sidebar-nav" id="nav-links">
-        <li class="nav-item active" data-section="overview">
-          <i class="ph-bold ph-chart-pie"></i>
-          <span>Overview</span>
-        </li>
-        <li class="nav-item" data-section="inventory">
-          <i class="ph-bold ph-package"></i>
-          <span>Inventory</span>
-        </li>
-        <li class="nav-item" data-section="attendance">
-          <i class="ph-bold ph-note-pencil"></i>
-          <span>Attendance</span>
-        </li>
-        <li class="nav-item" data-section="alerts">
-          <i class="ph-bold ph-warning"></i>
-          <span>Alerts</span>
-          <span class="alert-badge" id="nav-alert-count" style="display:none"></span>
-        </li>
-        <li class="nav-item" data-section="profile">
-          <i class="ph-bold ph-user-circle"></i>
-          <span>Profile</span>
-        </li>
-      </ul>
+      <nav class="sidebar-nav" id="sidebarNav">
+        <button class="nav-item active" data-section="overview">
+          <i class="ph ph-squares-four"></i> Overview
+        </button>
+        <button class="nav-item" data-section="inventory">
+          <i class="ph ph-package"></i> Inventory
+        </button>
+        <button class="nav-item" data-section="attendance">
+          <i class="ph ph-clipboard-text"></i> Attendance
+        </button>
+        <button class="nav-item" data-section="alerts">
+          <i class="ph ph-warning"></i> Alerts
+          <span class="nav-badge zero" id="alertBadge">0</span>
+        </button>
+        <button class="nav-item" data-section="profile">
+          <i class="ph ph-user"></i> Profile
+        </button>
+      </nav>
 
       <div class="sidebar-footer">
-        <div class="sidebar-user" id="sidebar-user">
-          <div class="sidebar-user-name" id="sidebar-username">—</div>
-          <div class="sidebar-user-role">School Admin</div>
+        <div class="sidebar-user">
+          <div class="sidebar-avatar" id="userAvatar">U</div>
+          <div class="sidebar-user-info">
+            <div class="sidebar-user-name" id="userName">User</div>
+            <div class="sidebar-user-role">School Admin</div>
+          </div>
         </div>
-        <button class="btn-logout" id="logout-btn">
-          <i class="ph-bold ph-sign-out"></i>
-          Logout
+        <button class="btn-logout" id="logoutBtn">
+          <i class="ph ph-sign-out"></i> Logout
         </button>
       </div>
-    </nav>
+    </aside>
 
-    <!-- ── Main Content ────────────────────────────────────────────── -->
-    <main class="main-content">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
-      <!-- ══ OVERVIEW ══════════════════════════════════════════════ -->
-      <section class="page-section active" id="section-overview">
-        <div class="page-header">
-          <h2>Overview</h2>
-          <p>Real-time snapshot of your school's meal program</p>
-        </div>
-
-        <!-- Stock KPI cards -->
-        <div class="kpi-grid" id="stock-kpi-grid">
-          <div class="kpi-card" id="kpi-rice">
-            <div class="kpi-icon blue"><i class="ph-bold ph-bowl-food"></i></div>
-            <div class="kpi-info">
-              <div class="kpi-value" id="kpi-rice-val">—</div>
-              <div class="kpi-label">Rice Stock</div>
-              <div class="progress-bar-wrap" style="margin-top:0.5rem">
-                <div class="progress-bar-fill" id="kpi-rice-bar" style="width:0%"></div>
-              </div>
-              <div style="font-size:0.78rem;color:var(--text-secondary)" id="kpi-rice-pct">Loading…</div>
-            </div>
-          </div>
-          <div class="kpi-card" id="kpi-wheat">
-            <div class="kpi-icon green"><i class="ph-bold ph-wheat"></i></div>
-            <div class="kpi-info">
-              <div class="kpi-value" id="kpi-wheat-val">—</div>
-              <div class="kpi-label">Wheat Stock</div>
-              <div class="progress-bar-wrap" style="margin-top:0.5rem">
-                <div class="progress-bar-fill" id="kpi-wheat-bar" style="width:0%"></div>
-              </div>
-              <div style="font-size:0.78rem;color:var(--text-secondary)" id="kpi-wheat-pct">Loading…</div>
-            </div>
-          </div>
-          <div class="kpi-card" id="kpi-dal">
-            <div class="kpi-icon yellow"><i class="ph-bold ph-plant"></i></div>
-            <div class="kpi-info">
-              <div class="kpi-value" id="kpi-dal-val">—</div>
-              <div class="kpi-label">Dal Stock</div>
-              <div class="progress-bar-wrap" style="margin-top:0.5rem">
-                <div class="progress-bar-fill" id="kpi-dal-bar" style="width:0%"></div>
-              </div>
-              <div style="font-size:0.78rem;color:var(--text-secondary)" id="kpi-dal-pct">Loading…</div>
+    <!-- MAIN -->
+    <main class="main">
+      <header class="main-header">
+        <div style="display:flex;align-items:center;gap:14px;">
+          <button class="menu-toggle" id="menuToggle"><i class="ph ph-list"></i></button>
+          <div class="main-header-left">
+            <h1 id="pageTitle">Overview</h1>
+            <div class="main-header-sub">
+              <i class="ph ph-buildings"></i>
+              <span id="schoolNameSub">School</span>
+              <span>•</span>
+              <i class="ph ph-calendar"></i>
+              <span id="todayLabel"></span>
             </div>
           </div>
         </div>
+      </header>
 
-        <!-- Quick Stats Row -->
-        <div class="kpi-grid" style="margin-bottom:1.5rem">
-          <div class="kpi-card">
-            <div class="kpi-icon blue"><i class="ph-bold ph-student"></i></div>
-            <div class="kpi-info">
-              <div class="kpi-value" id="ov-enrollment">—</div>
-              <div class="kpi-label">Total Enrolled</div>
-            </div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-icon green"><i class="ph-bold ph-check-square"></i></div>
-            <div class="kpi-info">
-              <div class="kpi-value" id="ov-today-att">—</div>
-              <div class="kpi-label">Today's Attendance</div>
-            </div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-icon yellow"><i class="ph-bold ph-fork-knife"></i></div>
-            <div class="kpi-info">
-              <div class="kpi-value" id="ov-meals-today">—</div>
-              <div class="kpi-label">Meals Served Today</div>
-            </div>
-          </div>
-        </div>
+      <div class="main-content">
 
-        <div class="grid-2">
-          <!-- Recent Activity -->
-          <div class="card" style="height:fit-content">
-            <h3 style="margin-bottom:1rem;font-size:0.95rem">Recent Attendance</h3>
-            <div id="recent-activity">
-              <div class="skeleton-row"><div class="skeleton"></div></div>
-              <div class="skeleton-row"><div class="skeleton"></div></div>
-              <div class="skeleton-row"><div class="skeleton"></div></div>
-            </div>
+        <!-- ===== SCREEN 3: OVERVIEW ===== -->
+        <section class="content-section active" id="section-overview">
+
+          <div class="grid-3" id="overviewInvCards">
+            <!-- inventory KPI cards inserted by JS -->
           </div>
 
-          <!-- Active Alerts -->
-          <div class="card" style="height:fit-content">
-            <h3 style="margin-bottom:1rem;font-size:0.95rem">Active Alerts</h3>
-            <div id="ov-active-alerts">
-              <div class="skeleton-row"><div class="skeleton"></div></div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ══ INVENTORY ═════════════════════════════════════════════ -->
-      <section class="page-section" id="section-inventory">
-        <div class="page-header">
-          <h2>Inventory Management</h2>
-          <p>Track and manage food stock levels</p>
-        </div>
-
-        <!-- Inventory Cards -->
-        <div class="inventory-grid">
-          <!-- Rice -->
-          <div class="inventory-card">
-            <div class="inv-header">
+          <div class="grid-stats3 mt-4">
+            <div class="stat-box">
+              <div class="stat-box-icon" style="background:var(--primary-light);color:var(--primary);"><i class="ph ph-student"></i></div>
               <div>
-                <div class="inv-amount" id="inv-rice-current">—</div>
-                <div class="inv-subtitle">of <span id="inv-rice-max">—</span> kg capacity</div>
-              </div>
-              <div class="inv-icon" style="background:var(--primary-light);color:var(--primary)">
-                <i class="ph-bold ph-bowl-food"></i>
+                <div class="kpi-value" id="kpiEnrollment">0</div>
+                <div class="kpi-label">Total Enrollment</div>
               </div>
             </div>
-            <div style="font-weight:600;margin-bottom:0.5rem">Rice</div>
-            <div class="progress-bar-wrap">
-              <div class="progress-bar-fill" id="inv-rice-bar" style="width:0%"></div>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:0.8rem;margin-top:0.3rem">
-              <span id="inv-rice-pct" style="color:var(--text-secondary)">0%</span>
-              <span class="badge" id="inv-rice-badge">—</span>
-            </div>
-          </div>
-
-          <!-- Wheat -->
-          <div class="inventory-card">
-            <div class="inv-header">
+            <div class="stat-box">
+              <div class="stat-box-icon" style="background:var(--secondary-light);color:var(--secondary);"><i class="ph ph-check-circle"></i></div>
               <div>
-                <div class="inv-amount" id="inv-wheat-current">—</div>
-                <div class="inv-subtitle">of <span id="inv-wheat-max">—</span> kg capacity</div>
-              </div>
-              <div class="inv-icon" style="background:var(--success-light);color:var(--secondary)">
-                <i class="ph-bold ph-wheat"></i>
+                <div class="kpi-value" id="kpiTodayAtt">—</div>
+                <div class="kpi-label">Today's Attendance</div>
               </div>
             </div>
-            <div style="font-weight:600;margin-bottom:0.5rem">Wheat</div>
-            <div class="progress-bar-wrap">
-              <div class="progress-bar-fill" id="inv-wheat-bar" style="width:0%"></div>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:0.8rem;margin-top:0.3rem">
-              <span id="inv-wheat-pct" style="color:var(--text-secondary)">0%</span>
-              <span class="badge" id="inv-wheat-badge">—</span>
-            </div>
-          </div>
-
-          <!-- Dal -->
-          <div class="inventory-card">
-            <div class="inv-header">
+            <div class="stat-box">
+              <div class="stat-box-icon" style="background:var(--purple-light);color:var(--purple);"><i class="ph ph-cooking-pot"></i></div>
               <div>
-                <div class="inv-amount" id="inv-dal-current">—</div>
-                <div class="inv-subtitle">of <span id="inv-dal-max">—</span> kg capacity</div>
-              </div>
-              <div class="inv-icon" style="background:var(--warning-light);color:var(--warning)">
-                <i class="ph-bold ph-plant"></i>
+                <div class="kpi-value" id="kpiTodayMeals">—</div>
+                <div class="kpi-label">Meals Served Today</div>
               </div>
             </div>
-            <div style="font-weight:600;margin-bottom:0.5rem">Dal</div>
-            <div class="progress-bar-wrap">
-              <div class="progress-bar-fill" id="inv-dal-bar" style="width:0%"></div>
+          </div>
+
+          <div class="grid-2 mt-4">
+            <div class="card">
+              <div class="card-title"><i class="ph ph-clock-clockwise"></i> Recent Activity</div>
+              <div id="recentActivityList" class="list-card-list"></div>
             </div>
-            <div style="display:flex;justify-content:space-between;font-size:0.8rem;margin-top:0.3rem">
-              <span id="inv-dal-pct" style="color:var(--text-secondary)">0%</span>
-              <span class="badge" id="inv-dal-badge">—</span>
+            <div class="card">
+              <div class="card-title"><i class="ph ph-warning"></i> Active Alerts</div>
+              <div id="overviewAlertsList" class="list-card-list"></div>
             </div>
           </div>
-        </div>
+        </section>
 
-        <!-- Add Stock Form -->
-        <div class="card" style="max-width:480px;margin-bottom:1.5rem">
-          <h3 style="margin-bottom:1rem;font-size:0.95rem">Add Stock Delivery</h3>
-          <form id="add-stock-form" novalidate>
-            <div class="form-group">
-              <label class="form-label" for="stock-item">Select Item</label>
-              <select class="form-control" id="stock-item">
-                <option value="">— Choose item —</option>
-                <option value="rice">Rice</option>
-                <option value="wheat">Wheat</option>
-                <option value="dal">Dal</option>
-              </select>
-              <span class="form-error" id="stock-item-error"></span>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="stock-qty">Quantity (kg)</label>
-              <input type="number" class="form-control" id="stock-qty" min="1" placeholder="e.g. 50" />
-              <span class="form-error" id="stock-qty-error"></span>
-            </div>
-            <button type="submit" class="btn btn-primary" id="add-stock-btn">
-              <i class="ph-bold ph-plus"></i>
-              Add Stock
-            </button>
-          </form>
-        </div>
+        <!-- ===== SCREEN 4: INVENTORY ===== -->
+        <section class="content-section" id="section-inventory">
 
-        <!-- Transaction History -->
-        <div class="card">
-          <h3 style="margin-bottom:1rem;font-size:0.95rem">Stock Transaction History</h3>
-          <div class="table-wrap">
-            <table id="txn-table">
-              <thead>
-                <tr>
-                  <th>Date & Time</th>
-                  <th>Item</th>
-                  <th>Type</th>
-                  <th>Quantity (kg)</th>
-                  <th>Reason</th>
-                </tr>
-              </thead>
-              <tbody id="txn-tbody">
-                <tr><td colspan="5" class="table-empty">Loading transactions…</td></tr>
-              </tbody>
-            </table>
+          <div class="grid-3" id="largeInvCards"></div>
+
+          <div class="card mt-4">
+            <div class="card-title"><i class="ph ph-plus-circle"></i> Add New Stock</div>
+            <form class="add-stock-form" id="addStockForm" autocomplete="off">
+              <div class="form-group">
+                <label class="form-label" for="stockItem">Select Item</label>
+                <select id="stockItem" class="form-select">
+                  <option value="">Choose item...</option>
+                  <option value="rice">Rice</option>
+                  <option value="wheat">Wheat</option>
+                  <option value="dal">Dal</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="stockQty">Quantity (kg)</label>
+                <input type="number" id="stockQty" class="form-input" min="0.1" step="0.1" placeholder="0" />
+              </div>
+              <button type="submit" class="btn btn-primary"><i class="ph ph-plus"></i> Add Stock</button>
+            </form>
+            <div class="add-stock-hint" id="stockHint" style="display:none;">
+              <i class="ph ph-info"></i><span id="stockHintText"></span>
+            </div>
           </div>
-        </div>
-      </section>
 
-      <!-- ══ ATTENDANCE ════════════════════════════════════════════ -->
-      <section class="page-section" id="section-attendance">
-        <div class="page-header">
-          <h2>Attendance & Meal Tracking</h2>
-          <p>Record daily student attendance and track food consumption</p>
-        </div>
+          <div class="card mt-4">
+            <div class="card-title"><i class="ph ph-clock-counter-clockwise"></i> Transaction History</div>
+            <div class="table-wrap">
+              <table class="table" id="txTable">
+                <thead>
+                  <tr>
+                    <th>Date & Time</th>
+                    <th>Item</th>
+                    <th>Type</th>
+                    <th>Qty (kg)</th>
+                    <th>Reason</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
 
-        <div class="grid-2" style="align-items:start">
-          <!-- Submit Form -->
+        <!-- ===== SCREEN 5: ATTENDANCE ===== -->
+        <section class="content-section" id="section-attendance">
+
           <div class="card">
-            <h3 style="margin-bottom:1rem;font-size:0.95rem">Submit Today's Attendance</h3>
-            <form id="attendance-form" novalidate>
-              <div class="form-group">
-                <label class="form-label" for="att-date">Date</label>
-                <input type="date" class="form-control" id="att-date" />
-                <span class="form-error" id="att-date-error"></span>
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="att-students">Students Present</label>
-                <input type="number" class="form-control" id="att-students" min="0" placeholder="Enter count" />
-                <div class="form-hint" id="att-enrollment-hint">Max enrollment: —</div>
-                <span class="form-error" id="att-students-error"></span>
-              </div>
-
-              <!-- Deduction Preview -->
-              <div class="preview-box" id="att-preview" style="display:none">
-                <div style="font-weight:600;margin-bottom:0.4rem;font-size:0.85rem;color:var(--primary)">
-                  <i class="ph-bold ph-calculator"></i> Food to be deducted
+            <div class="card-title"><i class="ph ph-clipboard-text"></i> Submit Daily Attendance</div>
+            <form id="attendanceForm" autocomplete="off">
+              <div class="attendance-form-row">
+                <div class="form-group">
+                  <label class="form-label" for="attDate">Date</label>
+                  <input type="date" id="attDate" class="form-input" />
                 </div>
-                <div class="preview-row">
-                  <span class="preview-label">Rice</span>
-                  <span class="preview-val" id="prev-rice">0 kg</span>
-                </div>
-                <div class="preview-row">
-                  <span class="preview-label">Wheat</span>
-                  <span class="preview-val" id="prev-wheat">0 kg</span>
-                </div>
-                <div class="preview-row">
-                  <span class="preview-label">Dal</span>
-                  <span class="preview-val" id="prev-dal">0 kg</span>
+                <div class="form-group">
+                  <label class="form-label" for="attCount">Students Present</label>
+                  <input type="number" id="attCount" class="form-input" min="1" placeholder="0" />
+                  <div class="text-light text-sm" id="attMaxHint" style="margin-top:4px;"></div>
                 </div>
               </div>
 
-              <button type="submit" class="btn btn-primary" style="margin-top:1rem" id="att-submit-btn">
-                <i class="ph-bold ph-check"></i>
-                Submit Attendance
+              <div class="preview-card" id="attPreview" style="display:none;">
+                <div class="preview-title">Meal Deduction Preview</div>
+                <div class="preview-row">
+                  <div class="preview-item">Rice:<span class="qty" id="prRice">0</span> kg</div>
+                  <div class="preview-item">Wheat:<span class="qty" id="prWheat">0</span> kg</div>
+                  <div class="preview-item">Dal:<span class="qty" id="prDal">0</span> kg</div>
+                </div>
+                <div class="preview-warning" id="prWarn"><i class="ph ph-warning"></i><span id="prWarnText"></span></div>
+              </div>
+
+              <button type="submit" class="btn btn-success" id="attSubmitBtn">
+                <i class="ph ph-check-circle"></i> Submit Attendance
               </button>
             </form>
           </div>
 
-          <!-- Attendance Chart -->
-          <div class="card">
-            <h3 style="margin-bottom:1rem;font-size:0.95rem">Last 7 Days Attendance</h3>
-            <div class="chart-wrap">
-              <canvas id="att-chart"></canvas>
+          <div class="card mt-4">
+            <div class="card-title"><i class="ph ph-chart-bar"></i> Attendance History (Last 30 Records)</div>
+            <div class="table-wrap">
+              <table class="table" id="attTable">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Students</th>
+                    <th>Rice (kg)</th>
+                    <th>Wheat (kg)</th>
+                    <th>Dal (kg)</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
             </div>
           </div>
-        </div>
+        </section>
 
-        <!-- History Table -->
-        <div class="card" style="margin-top:1.25rem">
-          <h3 style="margin-bottom:1rem;font-size:0.95rem">Attendance History (Last 30 Records)</h3>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Students Present</th>
-                  <th>Rice Used (kg)</th>
-                  <th>Wheat Used (kg)</th>
-                  <th>Dal Used (kg)</th>
-                </tr>
-              </thead>
-              <tbody id="att-history-tbody">
-                <tr><td colspan="5" class="table-empty">Loading attendance…</td></tr>
-              </tbody>
-            </table>
+        <!-- ===== SCREEN 6: ALERTS ===== -->
+        <section class="content-section" id="section-alerts">
+          <div class="filter-tabs" id="alertFilterTabs">
+            <button class="filter-tab active" data-filter="all">All <span data-count="all">(0)</span></button>
+            <button class="filter-tab" data-filter="active">Active <span data-count="active">(0)</span></button>
+            <button class="filter-tab" data-filter="resolved">Resolved <span data-count="resolved">(0)</span></button>
           </div>
-        </div>
-      </section>
+          <div id="alertsListContainer"></div>
+        </section>
 
-      <!-- ══ ALERTS ════════════════════════════════════════════════ -->
-      <section class="page-section" id="section-alerts">
-        <div class="page-header">
-          <h2>Alerts</h2>
-          <p>Stock warnings and critical notifications</p>
-        </div>
-
-        <div class="filter-tabs" id="alerts-tabs">
-          <button class="filter-tab active" data-filter="all">All</button>
-          <button class="filter-tab" data-filter="active">Active</button>
-          <button class="filter-tab" data-filter="resolved">Resolved</button>
-        </div>
-
-        <div id="alerts-list">
-          <div class="skeleton-row"><div class="skeleton"></div></div>
-        </div>
-      </section>
-
-      <!-- ══ PROFILE ════════════════════════════════════════════════ -->
-      <section class="page-section" id="section-profile">
-        <div class="page-header">
-          <h2>Profile</h2>
-          <p>Your account and school information</p>
-        </div>
-
-        <div class="grid-2" style="align-items:start">
-          <!-- User info -->
-          <div class="card">
-            <h3 style="margin-bottom:1.25rem;font-size:0.95rem">Account Information</h3>
-            <div class="profile-row">
-              <span class="profile-label">Name</span>
-              <span id="prof-name">—</span>
+        <!-- ===== SCREEN 7: PROFILE ===== -->
+        <section class="content-section" id="section-profile">
+          <div class="grid-2">
+            <div class="card profile-card">
+              <div class="card-title"><i class="ph ph-buildings"></i> School Information</div>
+              <div id="profileSchool"></div>
             </div>
-            <div class="profile-row">
-              <span class="profile-label">Email</span>
-              <span id="prof-email">—</span>
-            </div>
-            <div class="profile-row">
-              <span class="profile-label">Role</span>
-              <span class="badge badge-active">School Admin</span>
+            <div class="card profile-card">
+              <div class="card-title"><i class="ph ph-user-circle"></i> Your Account</div>
+              <div id="profileAccount"></div>
             </div>
           </div>
+        </section>
 
-          <!-- School info -->
-          <div class="card">
-            <h3 style="margin-bottom:1.25rem;font-size:0.95rem">School Information</h3>
-            <div class="profile-row">
-              <span class="profile-label">School Name</span>
-              <span id="prof-school-name">—</span>
-            </div>
-            <div class="profile-row">
-              <span class="profile-label">District</span>
-              <span id="prof-district">—</span>
-            </div>
-            <div class="profile-row">
-              <span class="profile-label">Total Enrollment</span>
-              <span id="prof-enrollment">—</span>
-            </div>
-            <div class="profile-row">
-              <span class="profile-label">Contact Person</span>
-              <span id="prof-contact">—</span>
-            </div>
-            <div class="profile-row">
-              <span class="profile-label">Status</span>
-              <span class="badge badge-active" id="prof-status">Active</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
+      </div>
     </main>
   </div>
 
-  <script src="js/utils.js"></script>
   <script src="js/mock-data.js"></script>
+  <script src="js/utils.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/school-dashboard.js"></script>
 </body>

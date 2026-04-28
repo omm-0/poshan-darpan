@@ -1,726 +1,701 @@
 /* ============================================================
-   POSHAN DARPAN — GOVERNMENT ANALYTICS DASHBOARD
-   Five sections: Overview, Schools, Analytics, Alerts, Profile.
-   Pure frontend; reads via window.PD_Data.
-   ============================================================ */
+   POSHAN DARPAN - GOVERNMENT DASHBOARD CONTROLLER
+============================================================ */
 
-(function () {
-  'use strict';
+let CURRENT_USER = null;
+let ANALYTICS_RANGE = 7;
 
-  const D = window.PD_Data;
-  const U = window.PD_Utils;
+// Chart instances (kept so we can destroy/replace)
+const CHARTS = {};
 
-  // ============================================================
-  // STATE
-  // ============================================================
-  const state = {
-    user: null,
-    charts: {},
-    schoolFilters: { search: '', district: '', status: '', sort: 'name' },
-    alertFilters: { severity: '', status: 'active', district: '' },
-    analyticsRange: 7
+document.addEventListener("DOMContentLoaded", () => {
+  initDataStore();
+  CURRENT_USER = guardRoute("government");
+  if (!CURRENT_USER) return;
+
+  initSidebarUserInfo();
+  setupNav();
+  setupMobileMenu();
+  setupLogout();
+  setupSchoolFilters();
+  setupRangeTabs();
+  setupAlertFilters();
+
+  document.getElementById("todayLabel").textContent = formatDate(todayStr());
+  document.getElementById("districtSub").textContent =
+    CURRENT_USER.district === "All" ? "All Districts" : CURRENT_USER.district;
+
+  renderHeaderForSection("overview");
+  renderOverview();
+  refreshAlertBadge();
+});
+
+// ---------- USER INFO / NAV ----------
+
+function initSidebarUserInfo() {
+  document.getElementById("userName").textContent = CURRENT_USER.name;
+  document.getElementById("userAvatar").textContent = CURRENT_USER.name.charAt(0).toUpperCase();
+}
+
+function setupNav() {
+  qsa(".nav-item", document.getElementById("sidebarNav")).forEach(btn => {
+    btn.addEventListener("click", () => switchSection(btn.dataset.section));
+  });
+}
+
+function switchSection(section) {
+  qsa(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.section === section));
+  qsa(".content-section").forEach(s => s.classList.remove("active"));
+  const target = document.getElementById("section-" + section);
+  if (target) {
+    target.classList.add("active", "fade-in");
+    setTimeout(() => target.classList.remove("fade-in"), 500);
+  }
+  renderHeaderForSection(section);
+
+  if (section === "overview")  renderOverview();
+  if (section === "schools")   renderSchools();
+  if (section === "analytics") renderAnalytics();
+  if (section === "alerts")    renderAlertsSection();
+  if (section === "profile")   renderProfile();
+
+  document.getElementById("sidebar").classList.remove("open");
+  document.getElementById("sidebarOverlay").classList.remove("show");
+}
+
+function renderHeaderForSection(section) {
+  const titles = {
+    overview:  "Overview",
+    schools:   "Schools List & Comparison",
+    analytics: "Analytics",
+    alerts:    "Alerts Monitor",
+    profile:   "Profile"
   };
-
-  // ============================================================
-  // INIT
-  // ============================================================
-  function init() {
-    state.user = window.PD_Auth.guardRoute('government');
-    if (!state.user) return;
-
-    setupSidebar();
-    setupNav();
-    setupLogout();
-    setupSchoolFilters();
-    setupAlertFilters();
-    setupAnalyticsRange();
-    setupModal();
-    fillSidebarInfo();
-
-    populateDistrictFilters();
-    renderOverview();
-    renderSchoolsTable();
-    renderAnalytics();
-    renderAlerts();
-    renderProfile();
-    updateAlertBadge();
-
-    U.hidePageLoading();
-  }
-
-  function fillSidebarInfo() {
-    const el = document.getElementById('sidebar-username');
-    if (el) el.textContent = state.user.name;
-  }
-
-  // ============================================================
-  // SIDEBAR / NAV
-  // ============================================================
-  function setupSidebar() {
-    const toggle = document.getElementById('sidebar-toggle');
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('sidebar-overlay');
-    function close() {
-      sidebar.classList.remove('open');
-      overlay.classList.remove('show');
-    }
-    if (toggle) toggle.addEventListener('click', () => {
-      sidebar.classList.toggle('open');
-      overlay.classList.toggle('show');
-    });
-    if (overlay) overlay.addEventListener('click', close);
-  }
-
-  function setupNav() {
-    const items = document.querySelectorAll('#nav-links .nav-item');
-    items.forEach(item => {
-      item.addEventListener('click', () => {
-        const section = item.getAttribute('data-section');
-        switchSection(section);
-        const sidebar = document.getElementById('sidebar');
-        const overlay = document.getElementById('sidebar-overlay');
-        if (sidebar && window.innerWidth <= 1024) {
-          sidebar.classList.remove('open');
-          if (overlay) overlay.classList.remove('show');
-        }
-      });
-    });
-  }
-
-  function switchSection(section) {
-    document.querySelectorAll('#nav-links .nav-item').forEach(n => {
-      n.classList.toggle('active', n.getAttribute('data-section') === section);
-    });
-    document.querySelectorAll('.page-section').forEach(s => {
-      s.classList.toggle('active', s.id === 'section-' + section);
-    });
-    if (section === 'overview')  setTimeout(renderOverviewCharts, 50);
-    if (section === 'analytics') setTimeout(renderAnalyticsCharts, 50);
-  }
-
-  function setupLogout() {
-    const btn = document.getElementById('logout-btn');
-    if (btn) btn.addEventListener('click', window.PD_Auth.handleLogout);
-  }
-
-  // ============================================================
-  // POPULATE FILTERS
-  // ============================================================
-  function populateDistrictFilters() {
-    const districts = Array.from(new Set(D.getAllSchools().map(s => s.district))).sort();
-    [
-      document.getElementById('district-filter'),
-      document.getElementById('gov-alert-district')
-    ].forEach(sel => {
-      if (!sel) return;
-      districts.forEach(d => {
-        const opt = document.createElement('option');
-        opt.value = d;
-        opt.textContent = d;
-        sel.appendChild(opt);
-      });
-    });
-  }
-
-  // ============================================================
-  // OVERVIEW SECTION
-  // ============================================================
-  function renderOverview() {
-    const schoolsCount = D.getTotalActiveSchools();
-    const totalEnroll = D.getTotalEnrollment();
-    const todayMeals = D.getTodayTotalMealsServed();
-    const activeAlerts = D.getTotalActiveAlerts();
-
-    U.animateNumber(document.getElementById('kpi-schools'), schoolsCount, 800);
-    U.animateNumber(document.getElementById('kpi-students'), totalEnroll, 1000);
-    U.animateNumber(document.getElementById('kpi-meals-today'), todayMeals, 1000);
-    U.animateNumber(document.getElementById('kpi-active-alerts'), activeAlerts, 700);
-
-    renderOverviewAlertsFeed();
-    renderOverviewCharts();
-  }
-
-  function renderOverviewCharts() {
-    renderAttendanceTrendChart();
-    renderMealPieChart();
-    renderInventoryHealthChart();
-  }
-
-  function renderAttendanceTrendChart() {
-    const canvas = document.getElementById('ov-attendance-chart');
-    if (!canvas || typeof Chart === 'undefined') return;
-    U.destroyChart(state.charts.attTrend);
-
-    const trend = D.getAttendanceTrendLast7Days();
-    const labels = trend.map(t => {
-      const p = t.date.split('-');
-      return p[2] + '/' + p[1];
-    });
-    const data = trend.map(t => t.totalStudents);
-    const colors = U.getChartColors();
-
-    state.charts.attTrend = new Chart(canvas, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'Total Students',
-          data: data,
-          borderColor: colors.primary,
-          backgroundColor: colors.primaryLight,
-          fill: true,
-          tension: 0.35,
-          pointRadius: 4
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          y: { beginAtZero: true, grid: { color: colors.grid }, ticks: { color: colors.text } },
-          x: { grid: { display: false }, ticks: { color: colors.text } }
-        }
-      }
-    });
-  }
-
-  function renderMealPieChart() {
-    const canvas = document.getElementById('ov-meal-pie-chart');
-    if (!canvas || typeof Chart === 'undefined') return;
-    U.destroyChart(state.charts.mealPie);
-
-    const cons = D.getMealConsumptionLast30Days();
-    const colors = U.getChartColors();
-
-    state.charts.mealPie = new Chart(canvas, {
-      type: 'doughnut',
-      data: {
-        labels: ['Rice', 'Wheat', 'Dal'],
-        datasets: [{
-          data: [cons.totalRice, cons.totalWheat, cons.totalDal],
-          backgroundColor: [colors.primary, colors.warning, colors.secondary],
-          borderWidth: 0
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: '60%',
-        plugins: {
-          legend: { position: 'bottom', labels: { color: colors.text, font: { size: 12 } } },
-          tooltip: { callbacks: { label: ctx => ctx.label + ': ' + ctx.parsed + ' kg' } }
-        }
-      }
-    });
-  }
-
-  function renderInventoryHealthChart() {
-    const canvas = document.getElementById('ov-inventory-chart');
-    if (!canvas || typeof Chart === 'undefined') return;
-    U.destroyChart(state.charts.invHealth);
-
-    const data = D.getSchoolInventoryHealth();
-    const colors = U.getChartColors();
-    const labels = data.map(d => d.schoolName.replace('Government ', '').replace(' School,', ','));
-    const values = data.map(d => d.avgPercentage);
-    const bgColors = values.map(v => v < 20 ? colors.danger : (v < 50 ? colors.warning : colors.secondary));
-
-    state.charts.invHealth = new Chart(canvas, {
-      type: 'bar',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'Avg Stock %',
-          data: values,
-          backgroundColor: bgColors,
-          borderRadius: 6
-        }]
-      },
-      options: {
-        indexAxis: 'y',
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: { callbacks: { label: ctx => ctx.parsed.x + '% avg stock' } }
-        },
-        scales: {
-          x: { beginAtZero: true, max: 100, grid: { color: colors.grid }, ticks: { color: colors.text, callback: v => v + '%' } },
-          y: { grid: { display: false }, ticks: { color: colors.text } }
-        }
-      }
-    });
-  }
-
-  function renderOverviewAlertsFeed() {
-    const feed = document.getElementById('ov-alerts-feed');
-    if (!feed) return;
-    const alerts = D.getActiveAlerts().slice(0, 10);
-    if (alerts.length === 0) {
-      feed.innerHTML = '<div class="empty-state"><i class="ph-bold ph-check-circle" style="color:var(--secondary)"></i><p>No active alerts across schools.</p></div>';
-      return;
-    }
-    feed.innerHTML = alerts.map(a => govAlertCardHtml(a, false)).join('');
-  }
-
-  // ============================================================
-  // SCHOOLS SECTION
-  // ============================================================
-  function setupSchoolFilters() {
-    const search = document.getElementById('school-search');
-    const district = document.getElementById('district-filter');
-    const status = document.getElementById('status-filter');
-    const sort = document.getElementById('sort-filter');
-    if (search)   search.addEventListener('input', () => { state.schoolFilters.search = search.value.trim().toLowerCase(); renderSchoolsTable(); });
-    if (district) district.addEventListener('change', () => { state.schoolFilters.district = district.value; renderSchoolsTable(); });
-    if (status)   status.addEventListener('change', () => { state.schoolFilters.status = status.value; renderSchoolsTable(); });
-    if (sort)     sort.addEventListener('change', () => { state.schoolFilters.sort = sort.value; renderSchoolsTable(); });
-  }
-
-  function renderSchoolsTable() {
-    const tbody = document.getElementById('schools-tbody');
-    if (!tbody) return;
-
-    let rows = D.getSchoolComparison();
-
-    // Filters
-    const f = state.schoolFilters;
-    if (f.search)   rows = rows.filter(r => r.name.toLowerCase().includes(f.search) || r.district.toLowerCase().includes(f.search));
-    if (f.district) rows = rows.filter(r => r.district === f.district);
-    if (f.status)   rows = rows.filter(r => r.status === f.status);
-
-    // Sort
-    if (f.sort === 'name')           rows.sort((a, b) => a.name.localeCompare(b.name));
-    else if (f.sort === 'enrollment') rows.sort((a, b) => b.enrollment - a.enrollment);
-    else if (f.sort === 'stock')      rows.sort((a, b) => a.avgStockPct - b.avgStockPct);
-
-    if (rows.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="table-empty">No schools match your filters.</td></tr>';
-      return;
-    }
-
-    function pctCell(v) {
-      const cls = v < 20 ? 'text-critical' : (v < 50 ? 'text-low' : 'text-healthy');
-      return '<td><span class="' + cls + '" style="font-weight:600">' + v + '%</span></td>';
-    }
-
-    tbody.innerHTML = rows.map(r =>
-      '<tr>' +
-        '<td><strong>' + U.escapeHtml(r.name) + '</strong></td>' +
-        '<td>' + U.escapeHtml(r.district) + '</td>' +
-        '<td>' + r.enrollment + '</td>' +
-        pctCell(r.ricePct) +
-        pctCell(r.wheatPct) +
-        pctCell(r.dalPct) +
-        '<td><span class="badge ' + (r.status === 'active' ? 'badge-active' : 'badge-inactive') + '">' + (r.status === 'active' ? 'Active' : 'Inactive') + '</span></td>' +
-        '<td><button class="btn btn-sm btn-secondary" data-school-detail="' + U.escapeHtml(r.schoolId) + '"><i class="ph-bold ph-eye"></i> View</button></td>' +
-      '</tr>'
-    ).join('');
-
-    tbody.querySelectorAll('[data-school-detail]').forEach(btn => {
-      btn.addEventListener('click', () => openSchoolModal(btn.getAttribute('data-school-detail')));
-    });
-  }
-
-  // ============================================================
-  // SCHOOL DETAIL MODAL
-  // ============================================================
-  function setupModal() {
-    const close = document.getElementById('modal-close');
-    const backdrop = document.getElementById('school-modal-backdrop');
-    if (close)    close.addEventListener('click', closeSchoolModal);
-    if (backdrop) backdrop.addEventListener('click', e => { if (e.target === backdrop) closeSchoolModal(); });
-  }
-
-  function closeSchoolModal() {
-    const backdrop = document.getElementById('school-modal-backdrop');
-    if (backdrop) backdrop.classList.remove('show');
-  }
-
-  function openSchoolModal(schoolId) {
-    const school = D.getSchoolById(schoolId);
-    const inv = D.getInventoryBySchoolId(schoolId);
-    if (!school) return;
-    document.getElementById('modal-school-name').textContent = school.name;
-
-    const body = document.getElementById('modal-body');
-    const att = D.getAttendanceBySchool(schoolId).slice(0, 10);
-    const alerts = D.getAlertsBySchool(schoolId).slice(0, 10);
-
-    function invRow(item, data) {
-      const pct = U.getStockPercentage(data.current, data.max);
-      const cls = U.getStockHealthClass(data.current, data.max);
-      return '<div style="margin-bottom:0.875rem">' +
-        '<div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:0.3rem">' +
-          '<strong>' + item + '</strong>' +
-          '<span style="color:var(--text-secondary)">' + data.current + ' / ' + data.max + ' kg (' + pct + '%)</span>' +
-        '</div>' +
-        '<div class="progress-bar-wrap"><div class="progress-bar-fill ' + cls + '" style="width:' + pct + '%"></div></div>' +
-      '</div>';
-    }
-
-    body.innerHTML =
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem">' +
-        '<div><span style="font-size:0.75rem;color:var(--text-secondary);text-transform:uppercase">District</span><div style="font-weight:600">' + U.escapeHtml(school.district) + '</div></div>' +
-        '<div><span style="font-size:0.75rem;color:var(--text-secondary);text-transform:uppercase">Enrollment</span><div style="font-weight:600">' + school.enrollment + ' students</div></div>' +
-        '<div><span style="font-size:0.75rem;color:var(--text-secondary);text-transform:uppercase">Contact</span><div style="font-weight:600">' + U.escapeHtml(school.contactPerson) + '</div></div>' +
-        '<div><span style="font-size:0.75rem;color:var(--text-secondary);text-transform:uppercase">Status</span><div><span class="badge ' + (school.status === 'active' ? 'badge-active' : 'badge-inactive') + '">' + (school.status === 'active' ? 'Active' : 'Inactive') + '</span></div></div>' +
-      '</div>' +
-
-      '<h4 class="section-title">Inventory</h4>' +
-      (inv ? (invRow('Rice', inv.rice) + invRow('Wheat', inv.wheat) + invRow('Dal', inv.dal)) : '<p style="color:var(--text-secondary)">No inventory data.</p>') +
-
-      '<h4 class="section-title" style="margin-top:1.25rem">Recent Attendance (Last 10)</h4>' +
-      (att.length === 0
-        ? '<p style="color:var(--text-secondary);font-size:0.85rem">No attendance recorded.</p>'
-        : '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Present</th><th>Rice</th><th>Wheat</th><th>Dal</th></tr></thead><tbody>' +
-          att.map(a => '<tr><td>' + U.formatDate(a.date) + '</td><td><strong>' + a.studentsPresent + '</strong></td><td>' + a.riceUsed.toFixed(2) + '</td><td>' + a.wheatUsed.toFixed(2) + '</td><td>' + a.dalUsed.toFixed(2) + '</td></tr>').join('') +
-          '</tbody></table></div>'
-      ) +
-
-      '<h4 class="section-title" style="margin-top:1.25rem">Alerts (Recent)</h4>' +
-      (alerts.length === 0
-        ? '<p style="color:var(--text-secondary);font-size:0.85rem">No alerts for this school.</p>'
-        : alerts.map(a => govAlertCardHtml(a, false)).join('')
-      );
-
-    document.getElementById('school-modal-backdrop').classList.add('show');
-  }
-
-  // ============================================================
-  // ANALYTICS SECTION
-  // ============================================================
-  function setupAnalyticsRange() {
-    const tabs = document.querySelectorAll('#section-analytics .filter-tab');
-    tabs.forEach(t => {
-      t.addEventListener('click', () => {
-        tabs.forEach(x => x.classList.remove('active'));
-        t.classList.add('active');
-        state.analyticsRange = parseInt(t.getAttribute('data-range'), 10) || 7;
-        renderAnalytics();
-      });
-    });
-  }
-
-  function renderAnalytics() {
-    const n = state.analyticsRange;
-
-    const avgRate = D.getAvgAttendanceRateLastNDays(n);
-    const avgMeals = D.getAvgMealsPerSchoolPerDay(n);
-    const topSchool = D.getTopAttendanceSchool(n);
-    const topItem = D.getMostConsumedItem(n);
-
-    const elRate = document.getElementById('an-avg-att');
-    const elMeals = document.getElementById('an-avg-meals');
-    const elTop = document.getElementById('an-top-school');
-    const elItem = document.getElementById('an-top-item');
-
-    if (elRate)  elRate.textContent = avgRate + '%';
-    if (elMeals) U.animateNumber(elMeals, avgMeals, 700);
-    if (elTop) {
-      if (topSchool) {
-        // Truncate for display
-        const short = topSchool.schoolName.replace('Government ', '').split(',')[0];
-        elTop.textContent = short;
-        elTop.title = topSchool.schoolName + ' (' + topSchool.rate + '% rate)';
-        elTop.style.fontSize = '1rem';
-      } else elTop.textContent = '—';
-    }
-    if (elItem) {
-      elItem.textContent = topItem ? topItem.name : '—';
-      if (topItem) elItem.title = topItem.total + ' kg consumed';
-    }
-
-    renderAnalyticsCharts();
-  }
-
-  function renderAnalyticsCharts() {
-    renderConsumptionTrend();
-    renderDistrictPerformance();
-    renderSchoolAttendanceComparison();
-    renderStockDonut();
-  }
-
-  function renderConsumptionTrend() {
-    const canvas = document.getElementById('an-consumption-chart');
-    if (!canvas || typeof Chart === 'undefined') return;
-    U.destroyChart(state.charts.consumption);
-
-    const daily = D.getDailyConsumptionLastNDays(state.analyticsRange);
-    const labels = daily.map(d => { const p = d.date.split('-'); return p[2] + '/' + p[1]; });
-    const colors = U.getChartColors();
-
-    state.charts.consumption = new Chart(canvas, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [
-          { label: 'Rice (kg)',  data: daily.map(d => d.rice),  borderColor: colors.primary,   backgroundColor: 'transparent', tension: 0.3 },
-          { label: 'Wheat (kg)', data: daily.map(d => d.wheat), borderColor: colors.warning,   backgroundColor: 'transparent', tension: 0.3 },
-          { label: 'Dal (kg)',   data: daily.map(d => d.dal),   borderColor: colors.secondary, backgroundColor: 'transparent', tension: 0.3 }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom', labels: { color: colors.text, font: { size: 11 } } } },
-        scales: {
-          y: { beginAtZero: true, grid: { color: colors.grid }, ticks: { color: colors.text } },
-          x: { grid: { display: false }, ticks: { color: colors.text } }
-        }
-      }
-    });
-  }
-
-  function renderDistrictPerformance() {
-    const canvas = document.getElementById('an-district-chart');
-    if (!canvas || typeof Chart === 'undefined') return;
-    U.destroyChart(state.charts.district);
-
-    const data = D.getDistrictWiseAttendance();
-    const labels = Object.keys(data);
-    const values = labels.map(l => data[l]);
-    const colors = U.getChartColors();
-
-    state.charts.district = new Chart(canvas, {
-      type: 'bar',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'Avg Attendance Rate (%)',
-          data: values,
-          backgroundColor: colors.palette,
-          borderRadius: 6
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.parsed.y + '% attendance' } } },
-        scales: {
-          y: { beginAtZero: true, max: 100, grid: { color: colors.grid }, ticks: { color: colors.text, callback: v => v + '%' } },
-          x: { grid: { display: false }, ticks: { color: colors.text } }
-        }
-      }
-    });
-  }
-
-  function renderSchoolAttendanceComparison() {
-    const canvas = document.getElementById('an-school-chart');
-    if (!canvas || typeof Chart === 'undefined') return;
-    U.destroyChart(state.charts.schoolComp);
-
-    const dates = U.getLastNDaysDates(state.analyticsRange);
-    const dateSet = new Set(dates);
-    const schools = D.getActiveSchools();
-    const all = D.getAllAttendance();
-
-    const dataPoints = schools.map(s => {
-      const recs = all.filter(a => a.schoolId === s.schoolId && dateSet.has(a.date));
-      const totalPresent = recs.reduce((sum, r) => sum + r.studentsPresent, 0);
-      const totalCapacity = recs.length * s.enrollment;
-      return totalCapacity > 0 ? Math.round((totalPresent / totalCapacity) * 1000) / 10 : 0;
-    });
-    const labels = schools.map(s => s.name.replace('Government ', '').split(',')[0]);
-    const colors = U.getChartColors();
-
-    state.charts.schoolComp = new Chart(canvas, {
-      type: 'bar',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'Attendance Rate %',
-          data: dataPoints,
-          backgroundColor: colors.primary,
-          borderRadius: 6
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.parsed.y + '%' } } },
-        scales: {
-          y: { beginAtZero: true, max: 100, grid: { color: colors.grid }, ticks: { color: colors.text, callback: v => v + '%' } },
-          x: { grid: { display: false }, ticks: { color: colors.text } }
-        }
-      }
-    });
-  }
-
-  function renderStockDonut() {
-    const canvas = document.getElementById('an-stock-donut');
-    if (!canvas || typeof Chart === 'undefined') return;
-    U.destroyChart(state.charts.stockDonut);
-
-    const invs = D.getAllInventories();
-    let totalCurrent = 0, totalMax = 0;
-    invs.forEach(i => {
-      totalCurrent += (i.rice.current + i.wheat.current + i.dal.current);
-      totalMax += (i.rice.max + i.wheat.max + i.dal.max);
-    });
-    const used = Math.round(totalCurrent * 10) / 10;
-    const free = Math.round((totalMax - totalCurrent) * 10) / 10;
-    const colors = U.getChartColors();
-
-    state.charts.stockDonut = new Chart(canvas, {
-      type: 'doughnut',
-      data: {
-        labels: ['Currently Stocked', 'Empty Capacity'],
-        datasets: [{
-          data: [used, free],
-          backgroundColor: [colors.secondary, colors.grid],
-          borderWidth: 0
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: '65%',
-        plugins: {
-          legend: { position: 'bottom', labels: { color: colors.text, font: { size: 12 } } },
-          tooltip: { callbacks: { label: ctx => ctx.label + ': ' + ctx.parsed + ' kg' } }
-        }
-      }
-    });
-  }
-
-  // ============================================================
-  // ALERTS SECTION
-  // ============================================================
-  function setupAlertFilters() {
-    const sev = document.getElementById('gov-alert-severity');
-    const stat = document.getElementById('gov-alert-status');
-    const dist = document.getElementById('gov-alert-district');
-    if (sev)  sev.addEventListener('change', () => { state.alertFilters.severity = sev.value; renderAlerts(); });
-    if (stat) stat.addEventListener('change', () => { state.alertFilters.status = stat.value; renderAlerts(); });
-    if (dist) dist.addEventListener('change', () => { state.alertFilters.district = dist.value; renderAlerts(); });
-  }
-
-  function updateAlertBadge() {
-    const badge = document.getElementById('nav-alert-count');
-    if (!badge) return;
-    const count = D.getActiveAlerts().length;
-    if (count > 0) {
-      badge.textContent = count;
-      badge.style.display = 'inline-flex';
-    } else {
-      badge.style.display = 'none';
-    }
-  }
-
-  function renderAlerts() {
-    // Stats
-    const all = D.getAllAlerts();
-    const active = all.filter(a => a.status === 'active');
-    const warnings = active.filter(a => a.severity === 'warning').length;
-    const criticals = active.filter(a => a.severity === 'critical').length;
-    const top = D.getMostAlertedSchool();
-
-    const wEl = document.getElementById('gov-warnings');
-    const cEl = document.getElementById('gov-criticals');
-    const mEl = document.getElementById('gov-most-alerted');
-    if (wEl) U.animateNumber(wEl, warnings, 700);
-    if (cEl) U.animateNumber(cEl, criticals, 700);
-    if (mEl) {
-      if (top) {
-        const short = top.schoolName.replace('Government ', '').split(',')[0];
-        mEl.textContent = short;
-        mEl.title = top.schoolName + ' (' + top.alertCount + ' alerts)';
-        mEl.style.fontSize = '1rem';
-      } else mEl.textContent = 'None';
-    }
-
-    // List
-    const list = document.getElementById('gov-alerts-list');
-    if (!list) return;
-
-    let alerts = all.slice().sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-    const f = state.alertFilters;
-    if (f.severity) alerts = alerts.filter(a => a.severity === f.severity);
-    if (f.status)   alerts = alerts.filter(a => a.status === f.status);
-    if (f.district) {
-      const schoolIds = D.getAllSchools().filter(s => s.district === f.district).map(s => s.schoolId);
-      alerts = alerts.filter(a => schoolIds.includes(a.schoolId));
-    }
-
-    if (alerts.length === 0) {
-      list.innerHTML = '<div class="empty-state"><i class="ph-bold ph-bell-slash"></i><p>No alerts match your filters.</p></div>';
-      return;
-    }
-    list.innerHTML = alerts.map(a => govAlertCardHtml(a, true)).join('');
-
-    list.querySelectorAll('[data-resolve]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-resolve');
-        U.showConfirmDialog('Mark as resolved?', 'This alert will be moved to the Resolved view.', function () {
-          const result = D.resolveAlert(id);
-          if (result.success) {
-            U.showToast('Alert resolved.', 'success');
-            renderAlerts();
-            renderOverview();
-            updateAlertBadge();
-          } else {
-            U.showToast(result.error, 'error');
-          }
-        });
-      });
-    });
-  }
-
-  function govAlertCardHtml(a, showResolveBtn) {
-    const sev = a.severity || 'warning';
-    const isResolved = a.status === 'resolved';
-    const iconCls = sev === 'critical' ? 'ph-warning-octagon' : 'ph-warning';
-    const badgeClass = sev === 'critical' ? 'badge-critical' : 'badge-warning';
-    const sevLabel = sev === 'critical' ? 'CRITICAL' : 'WARNING';
-    const cardCls = 'alert-card ' + (isResolved ? 'resolved' : sev);
-    const opacity = isResolved ? 'opacity:0.65;' : '';
-
-    let actions = '';
-    if (showResolveBtn && !isResolved) {
-      actions = '<button class="btn btn-sm btn-success" data-resolve="' + U.escapeHtml(a.id) + '"><i class="ph-bold ph-check"></i> Resolve</button>';
-    } else if (isResolved) {
-      actions = '<span class="badge badge-resolved">Resolved</span>';
-    }
-
-    return '<div class="' + cardCls + '" style="' + opacity + '">' +
-      '<div class="alert-icon ' + sev + '"><i class="ph-bold ' + iconCls + '"></i></div>' +
-      '<div class="alert-body">' +
-        '<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-bottom:0.25rem">' +
-          '<span class="badge ' + badgeClass + '">' + sevLabel + '</span>' +
-          '<span class="badge badge-inactive">' + U.escapeHtml(a.item) + '</span>' +
-          '<strong style="font-size:0.85rem">' + U.escapeHtml(a.schoolName) + '</strong>' +
-        '</div>' +
-        '<div class="alert-title">' + U.escapeHtml(a.title) + '</div>' +
-        '<div class="alert-message">' + U.escapeHtml(a.message) + '</div>' +
-        '<div class="alert-meta">' + U.escapeHtml(U.getTimeAgo(a.timestamp)) + '</div>' +
-      '</div>' +
-      (actions ? '<div style="flex-shrink:0;align-self:center">' + actions + '</div>' : '') +
-    '</div>';
-  }
-
-  // ============================================================
-  // PROFILE SECTION
-  // ============================================================
-  function renderProfile() {
-    const map = {
-      'prof-name': state.user.name,
-      'prof-email': state.user.email,
-      'prof-district': state.user.district || '—'
-    };
-    Object.keys(map).forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = map[id];
-    });
-  }
-
-  // ============================================================
-  // BOOT
-  // ============================================================
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+  document.getElementById("pageTitle").textContent = titles[section] || "Dashboard";
+}
+
+function setupMobileMenu() {
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebarOverlay");
+  const toggle  = document.getElementById("menuToggle");
+  toggle.addEventListener("click", () => {
+    sidebar.classList.toggle("open");
+    overlay.classList.toggle("show");
+  });
+  overlay.addEventListener("click", () => {
+    sidebar.classList.remove("open");
+    overlay.classList.remove("show");
+  });
+}
+
+function setupLogout() {
+  document.getElementById("logoutBtn").addEventListener("click", handleLogout);
+}
+
+function refreshAlertBadge() {
+  const count = getActiveAlertCount();
+  const badge = document.getElementById("alertBadge");
+  if (count > 0) {
+    badge.textContent = String(count);
+    badge.classList.remove("zero");
+    badge.classList.add("pulse");
   } else {
-    init();
+    badge.textContent = "0";
+    badge.classList.add("zero");
+    badge.classList.remove("pulse");
   }
-})();
+}
+
+function _destroyChart(key) {
+  if (CHARTS[key]) {
+    try { CHARTS[key].destroy(); } catch (e) {}
+    CHARTS[key] = null;
+  }
+}
+
+// =============================================================
+// SECTION 1: OVERVIEW
+// =============================================================
+
+function renderOverview() {
+  // KPIs
+  animateCounter(document.getElementById("govKpiSchools"),  getTotalActiveSchools(), 900);
+  animateCounter(document.getElementById("govKpiStudents"), getTotalEnrollment(),    900);
+  animateCounter(document.getElementById("govKpiMeals"),    getTodayTotalMeals(),    900);
+  animateCounter(document.getElementById("govKpiAlerts"),   getActiveAlertCount(),   900);
+
+  renderAttendanceTrendChart();
+  renderMealDistChart();
+  renderInvHealthChart();
+  renderRecentFeed();
+
+  document.getElementById("viewAllAlertsLink").onclick = () => switchSection("alerts");
+}
+
+function renderAttendanceTrendChart() {
+  _destroyChart("attendanceTrend");
+  const data = getAttendanceTrendLastNDays(7);
+  const ctx = document.getElementById("attendanceTrendChart").getContext("2d");
+  const grad = ctx.createLinearGradient(0, 0, 0, 280);
+  grad.addColorStop(0, "rgba(37,99,235,0.35)");
+  grad.addColorStop(1, "rgba(37,99,235,0.02)");
+
+  CHARTS.attendanceTrend = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: data.map(d => formatDate(d.date)),
+      datasets: [{
+        label: "Total Students",
+        data: data.map(d => d.totalStudents),
+        borderColor: "#2563EB",
+        backgroundColor: grad,
+        fill: true,
+        tension: 0.35,
+        pointRadius: 5,
+        pointBackgroundColor: "#2563EB",
+        pointBorderColor: "#fff",
+        pointBorderWidth: 2,
+        borderWidth: 2.5
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, grid: { color: "#F1F5F9" } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+}
+
+function renderMealDistChart() {
+  _destroyChart("mealDist");
+  const tot = getTotalConsumption(30);
+  const total = tot.totalRice + tot.totalWheat + tot.totalDal;
+  const ctx = document.getElementById("mealDistChart").getContext("2d");
+  CHARTS.mealDist = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: ["Rice", "Wheat", "Dal"],
+      datasets: [{
+        data: [tot.totalRice, tot.totalWheat, tot.totalDal],
+        backgroundColor: ["#2563EB", "#F59E0B", "#059669"],
+        borderColor: "#fff",
+        borderWidth: 3
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "65%",
+      plugins: {
+        legend: { position: "bottom", labels: { padding: 14, usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            label: (ctxObj) => {
+              const v = ctxObj.parsed;
+              const pct = total === 0 ? 0 : ((v / total) * 100).toFixed(1);
+              return ctxObj.label + ": " + v.toFixed(1) + " kg (" + pct + "%)";
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderInvHealthChart() {
+  _destroyChart("invHealth");
+  const data = getSchoolInventoryHealth();
+  const ctx = document.getElementById("invHealthChart").getContext("2d");
+  const colors = data.map(d => d.avgPercentage > 50 ? "#059669" : d.avgPercentage >= 20 ? "#F59E0B" : "#DC2626");
+
+  CHARTS.invHealth = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: data.map(d => d.schoolName),
+      datasets: [{
+        label: "Avg Stock %",
+        data: data.map(d => d.avgPercentage),
+        backgroundColor: colors,
+        borderRadius: 6
+      }]
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (c) => " " + c.parsed.x.toFixed(1) + "%" } }
+      },
+      scales: {
+        x: { beginAtZero: true, max: 100, ticks: { callback: v => v + "%" }, grid: { color: "#F1F5F9" } },
+        y: { grid: { display: false } }
+      }
+    }
+  });
+}
+
+function renderRecentFeed() {
+  const feed = document.getElementById("govRecentFeed");
+  const alerts = getAllAlerts().slice(0, 8);
+  if (alerts.length === 0) {
+    feed.innerHTML = '<div class="empty-list"><i class="ph ph-tray"></i>No alerts to display.</div>';
+    return;
+  }
+  feed.innerHTML = alerts.map(a => {
+    const sevBadge = a.severity === "critical"
+      ? '<span class="badge badge-danger">CRITICAL</span>'
+      : '<span class="badge badge-warning">WARNING</span>';
+    const statusBadge = a.status === "active"
+      ? '<span class="badge badge-info">Active</span>'
+      : '<span class="badge badge-grey">Resolved</span>';
+    return '' +
+      '<div class="feed-item">' +
+      '  <div class="feed-item-head">' +
+      '    <span class="feed-item-school">' + escapeHtml(a.schoolName) + '</span>' +
+      '    ' + sevBadge +
+      '    <span class="badge badge-info">' + escapeHtml(a.item) + '</span>' +
+      '    ' + statusBadge +
+      '    <span class="feed-item-time">' + timeAgo(a.timestamp) + '</span>' +
+      '  </div>' +
+      '  <div class="feed-item-title">' + escapeHtml(a.title) + '</div>' +
+      '</div>';
+  }).join("");
+}
+
+// =============================================================
+// SECTION 2: SCHOOLS LIST
+// =============================================================
+
+function setupSchoolFilters() {
+  // Populate district options
+  const distSel = document.getElementById("districtFilter");
+  getDistrictList().forEach(d => {
+    distSel.insertAdjacentHTML("beforeend", '<option value="' + escapeHtml(d) + '">' + escapeHtml(d) + '</option>');
+  });
+
+  document.getElementById("schoolSearch").addEventListener("input", renderSchools);
+  document.getElementById("districtFilter").addEventListener("change", renderSchools);
+  document.getElementById("statusFilter").addEventListener("change", renderSchools);
+}
+
+function renderSchools() {
+  const q = (document.getElementById("schoolSearch").value || "").trim().toLowerCase();
+  const d = document.getElementById("districtFilter").value;
+  const st = document.getElementById("statusFilter").value;
+
+  let schools = getAllSchools();
+  if (q)  schools = schools.filter(s => s.name.toLowerCase().includes(q));
+  if (d)  schools = schools.filter(s => s.district === d);
+  if (st) schools = schools.filter(s => s.status === st);
+
+  const tbody = document.querySelector("#schoolsTable tbody");
+
+  if (schools.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-light);">No schools match your filters.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = schools.map(sc => {
+    const inv = getInventory(sc.schoolId);
+    const cells = inv ? [
+      stockCell(inv.rice.current,  inv.rice.max),
+      stockCell(inv.wheat.current, inv.wheat.max),
+      stockCell(inv.dal.current,   inv.dal.max)
+    ] : ['<span class="text-light">—</span>', '<span class="text-light">—</span>', '<span class="text-light">—</span>'];
+
+    const statusBadge = sc.status === "active"
+      ? '<span class="badge badge-success"><span class="badge-dot" style="background:var(--secondary);"></span>Active</span>'
+      : '<span class="badge badge-grey">Inactive</span>';
+
+    return '<tr>' +
+      '<td>' + escapeHtml(sc.name) + '</td>' +
+      '<td>' + escapeHtml(sc.district) + '</td>' +
+      '<td>' + sc.enrollment + '</td>' +
+      '<td>' + cells[0] + '</td>' +
+      '<td>' + cells[1] + '</td>' +
+      '<td>' + cells[2] + '</td>' +
+      '<td>' + statusBadge + '</td>' +
+      '<td><button class="btn btn-outline btn-sm" data-view="' + sc.schoolId + '"><i class="ph ph-eye"></i> View</button></td>' +
+      '</tr>';
+  }).join("");
+
+  qsa('button[data-view]', tbody).forEach(b => {
+    b.addEventListener("click", () => openSchoolModal(b.dataset.view));
+  });
+}
+
+function stockCell(current, max) {
+  const pct = stockPercent(current, max);
+  const cls = pct > 50 ? "healthy" : (pct >= 20 ? "warn" : "critical");
+  return '<span class="stock-cell ' + cls + '">' + pct + '%</span>';
+}
+
+// =============================================================
+// SCHOOL DETAIL MODAL (Screen 13)
+// =============================================================
+
+function openSchoolModal(schoolId) {
+  const sc = getSchoolById(schoolId);
+  if (!sc) return;
+  const inv = getInventory(schoolId);
+  const att = getAttendanceBySchool(schoolId).slice(0, 10);
+  const alerts = getAlertsBySchool(schoolId);
+
+  const root = document.getElementById("schoolModalRoot");
+
+  const statusBadge = sc.status === "active"
+    ? '<span class="badge badge-success"><span class="badge-dot" style="background:var(--secondary);"></span>Active</span>'
+    : '<span class="badge badge-grey">Inactive</span>';
+
+  const invHtml = inv ? '<div class="mini-inv-grid">' +
+      miniInvCard("Rice",  inv.rice) +
+      miniInvCard("Wheat", inv.wheat) +
+      miniInvCard("Dal",   inv.dal) +
+    '</div>' : '<div class="empty-list">No inventory data.</div>';
+
+  const attHtml = att.length === 0
+    ? '<div class="empty-list">No attendance records.</div>'
+    : '<div class="table-wrap"><table class="table"><thead><tr>' +
+      '<th>Date</th><th>Students</th><th>Rice</th><th>Wheat</th><th>Dal</th></tr></thead><tbody>' +
+      att.map(r =>
+        '<tr><td>' + formatDate(r.date) + '</td>' +
+        '<td>' + r.studentsPresent + '</td>' +
+        '<td>' + r.riceUsed.toFixed(1) + ' kg</td>' +
+        '<td>' + r.wheatUsed.toFixed(1) + ' kg</td>' +
+        '<td>' + r.dalUsed.toFixed(2) + ' kg</td></tr>'
+      ).join("") +
+      '</tbody></table></div>';
+
+  const alertsHtml = alerts.length === 0
+    ? '<div class="empty-list"><i class="ph-fill ph-check-circle" style="color:var(--secondary);"></i>No alerts for this school.</div>'
+    : alerts.map(a => govAlertCardHtml(a, false)).join("");
+
+  root.innerHTML =
+    '<div class="modal-overlay" id="schoolModalOverlay">' +
+    '  <div class="modal-card school-modal">' +
+    '    <div class="school-modal-head">' +
+    '      <button class="school-modal-close" id="closeSchoolModal"><i class="ph ph-x"></i></button>' +
+    '      <div class="school-modal-title">' + escapeHtml(sc.name) + '</div>' +
+    '      <div class="school-modal-meta">' +
+    '        <span><b>District:</b> ' + escapeHtml(sc.district) + '</span>' +
+    '        <span><b>Enrollment:</b> ' + sc.enrollment + '</span>' +
+    '        <span><b>Status:</b> ' + statusBadge + '</span>' +
+    '      </div>' +
+    '    </div>' +
+    '    <div class="school-modal-tabs" id="schoolModalTabs">' +
+    '      <button class="school-modal-tab active" data-tab="inv">Inventory</button>' +
+    '      <button class="school-modal-tab" data-tab="att">Attendance</button>' +
+    '      <button class="school-modal-tab" data-tab="alr">Alerts</button>' +
+    '    </div>' +
+    '    <div class="school-modal-body">' +
+    '      <div class="school-modal-tab-content active" id="tab-inv">' + invHtml + '</div>' +
+    '      <div class="school-modal-tab-content" id="tab-att">' + attHtml + '</div>' +
+    '      <div class="school-modal-tab-content" id="tab-alr">' + alertsHtml + '</div>' +
+    '    </div>' +
+    '  </div>' +
+    '</div>';
+
+  function closeModal() {
+    const overlay = document.getElementById("schoolModalOverlay");
+    if (!overlay) return;
+    overlay.classList.add("modal-out");
+    setTimeout(() => { root.innerHTML = ""; }, 200);
+  }
+
+  document.getElementById("closeSchoolModal").addEventListener("click", closeModal);
+  document.getElementById("schoolModalOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "schoolModalOverlay") closeModal();
+  });
+  qsa("#schoolModalTabs .school-modal-tab").forEach(t => {
+    t.addEventListener("click", () => {
+      qsa("#schoolModalTabs .school-modal-tab").forEach(b => b.classList.remove("active"));
+      t.classList.add("active");
+      qsa(".school-modal-tab-content").forEach(c => c.classList.remove("active"));
+      document.getElementById("tab-" + t.dataset.tab).classList.add("active");
+    });
+  });
+}
+
+function miniInvCard(label, slot) {
+  const pct = stockPercent(slot.current, slot.max);
+  const color = pct > 50 ? "green" : (pct >= 20 ? "amber" : "red");
+  const status = stockLabel(slot.current, slot.max);
+  const badge = stockBadgeClass(slot.current, slot.max);
+  return '' +
+    '<div class="mini-inv-card">' +
+    '  <div class="name">' + label + '</div>' +
+    '  <div class="val">' + slot.current + ' / ' + slot.max + '</div>' +
+    '  <div class="max">kg</div>' +
+    '  <div class="progress"><div class="progress-bar ' + color + '" style="width:' + pct + '%"></div></div>' +
+    '  <div class="flex-between text-sm" style="margin-top:6px;">' +
+    '    <span>' + pct + '%</span>' +
+    '    <span class="badge ' + badge + '">' + status + '</span>' +
+    '  </div>' +
+    '</div>';
+}
+
+// =============================================================
+// SECTION 3: ANALYTICS
+// =============================================================
+
+function setupRangeTabs() {
+  qsa(".range-tab", document.getElementById("rangeTabs")).forEach(btn => {
+    btn.addEventListener("click", () => {
+      qsa(".range-tab").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      ANALYTICS_RANGE = parseInt(btn.dataset.range, 10);
+      renderAnalytics();
+    });
+  });
+}
+
+function renderAnalytics() {
+  const days = ANALYTICS_RANGE;
+
+  // KPIs
+  const avgAttEl = document.getElementById("anaAvgAtt");
+  avgAttEl.dataset.suffix = "%";
+  avgAttEl.textContent = "0%";
+  animateCounter(avgAttEl, getAvgAttendanceRate(days), 900);
+
+  animateCounter(document.getElementById("anaAvgMeals"), getAvgMealsPerSchoolPerDay(days), 900);
+  document.getElementById("anaTopItem").textContent = getMostConsumedItem(days);
+
+  const top = getHighestAttendanceSchool(days);
+  document.getElementById("anaTopSchool").textContent = top.name + " (" + top.rate + "%)";
+
+  renderConsumptionChart(days);
+  renderDistrictChart(days);
+  renderSchoolCompareChart();
+  renderUtilChart();
+}
+
+function renderConsumptionChart(days) {
+  _destroyChart("consumption");
+  const data = getConsumptionLastNDays(days);
+  const ctx = document.getElementById("consumptionChart").getContext("2d");
+  CHARTS.consumption = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: data.dates.map(d => formatDate(d)),
+      datasets: [
+        { label: "Rice (kg)",  data: data.riceTotals,  borderColor: "#2563EB", backgroundColor: "rgba(37,99,235,0.1)", tension: 0.35, fill: false, borderWidth: 2.5 },
+        { label: "Wheat (kg)", data: data.wheatTotals, borderColor: "#F59E0B", backgroundColor: "rgba(245,158,11,0.1)", tension: 0.35, fill: false, borderWidth: 2.5 },
+        { label: "Dal (kg)",   data: data.dalTotals,   borderColor: "#059669", backgroundColor: "rgba(5,150,105,0.1)",  tension: 0.35, fill: false, borderWidth: 2.5 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: "top", labels: { usePointStyle: true } } },
+      scales: {
+        y: { beginAtZero: true, grid: { color: "#F1F5F9" } },
+        x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } }
+      }
+    }
+  });
+}
+
+function renderDistrictChart(days) {
+  _destroyChart("district");
+  const map = getDistrictWiseAttendance(days);
+  const entries = Object.entries(map).sort((a, b) => b[1] - a[1]);
+  const ctx = document.getElementById("districtChart").getContext("2d");
+
+  CHARTS.district = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: entries.map(e => e[0]),
+      datasets: [{
+        label: "Avg Attendance %",
+        data: entries.map(e => e[1]),
+        backgroundColor: "rgba(37,99,235,0.85)",
+        borderRadius: 6
+      }]
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => " " + c.parsed.x.toFixed(1) + "%" } } },
+      scales: {
+        x: { beginAtZero: true, max: 100, ticks: { callback: v => v + "%" }, grid: { color: "#F1F5F9" } },
+        y: { grid: { display: false } }
+      }
+    }
+  });
+}
+
+function renderSchoolCompareChart() {
+  _destroyChart("schoolCompare");
+  const dates = getLastNDates(5);
+  const schools = getActiveSchools();
+  const shades = ["rgba(37,99,235,0.4)", "rgba(37,99,235,0.55)", "rgba(37,99,235,0.7)", "rgba(37,99,235,0.85)", "rgba(37,99,235,1)"];
+
+  const datasets = dates.map((d, i) => ({
+    label: formatDate(d),
+    data: schools.map(sc => {
+      const rec = getAllAttendance().find(r => r.schoolId === sc.schoolId && r.date === d);
+      return rec ? rec.studentsPresent : 0;
+    }),
+    backgroundColor: shades[i],
+    borderRadius: 4
+  }));
+
+  const ctx = document.getElementById("schoolCompareChart").getContext("2d");
+  CHARTS.schoolCompare = new Chart(ctx, {
+    type: "bar",
+    data: { labels: schools.map(s => s.name.split(",")[0]), datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: "top", labels: { usePointStyle: true, boxWidth: 10 } } },
+      scales: {
+        y: { beginAtZero: true, grid: { color: "#F1F5F9" } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+}
+
+function renderUtilChart() {
+  _destroyChart("util");
+  const u = getOverallStockUtilization();
+  const ctx = document.getElementById("utilChart").getContext("2d");
+  const remaining = parseFloat((u.totalCapacity - u.usedCapacity).toFixed(2));
+
+  CHARTS.util = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: ["Currently Stocked (" + u.usedCapacity + " kg)", "Available Capacity (" + remaining + " kg)"],
+      datasets: [{
+        data: [u.usedCapacity, remaining],
+        backgroundColor: ["#2563EB", "#E2E8F0"],
+        borderColor: "#fff",
+        borderWidth: 3
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: "70%",
+      plugins: {
+        legend: { position: "right", labels: { padding: 14, usePointStyle: true } },
+        tooltip: { callbacks: { label: c => " " + c.label + ": " + c.parsed.toFixed(1) + " kg" } },
+        title: { display: true, text: "Utilization: " + u.percentage + "%", font: { size: 14, weight: "600" }, color: "#1E293B" }
+      }
+    }
+  });
+}
+
+// =============================================================
+// SECTION 4: ALERTS
+// =============================================================
+
+function setupAlertFilters() {
+  // Populate school filter
+  const schSel = document.getElementById("alertSchoolFilter");
+  getAllSchools().forEach(s => {
+    schSel.insertAdjacentHTML("beforeend",
+      '<option value="' + s.schoolId + '">' + escapeHtml(s.name) + '</option>');
+  });
+
+  ["alertSeverityFilter", "alertStatusFilter", "alertSchoolFilter"].forEach(id => {
+    document.getElementById(id).addEventListener("change", renderAlertsSection);
+  });
+}
+
+function renderAlertsSection() {
+  // Top stat cards
+  const active = getActiveAlerts();
+  const warnings = active.filter(a => a.severity === "warning").length;
+  const criticals = active.filter(a => a.severity === "critical").length;
+  document.getElementById("alWarn").textContent = warnings;
+  document.getElementById("alCrit").textContent = criticals;
+  document.getElementById("alTopSchool").textContent = getMostAlertedSchool();
+
+  // Filter list
+  const sev    = document.getElementById("alertSeverityFilter").value;
+  const status = document.getElementById("alertStatusFilter").value;
+  const sch    = document.getElementById("alertSchoolFilter").value;
+
+  let list = getAllAlerts();
+  if (sev)    list = list.filter(a => a.severity === sev);
+  if (status) list = list.filter(a => a.status === status);
+  if (sch)    list = list.filter(a => a.schoolId === sch);
+
+  const wrap = document.getElementById("govAlertsList");
+  if (list.length === 0) {
+    wrap.innerHTML =
+      '<div class="card empty-state">' +
+      '<i class="ph ph-funnel"></i>' +
+      '<div class="empty-state-title">No alerts match your filters</div>' +
+      '<div class="empty-state-msg">Try changing or clearing filters above.</div>' +
+      '</div>';
+    return;
+  }
+  wrap.innerHTML = list.map(a => govAlertCardHtml(a, true)).join("");
+}
+
+function govAlertCardHtml(a, showSchool) {
+  const severityClass = a.status === "resolved"
+    ? "alert-resolved"
+    : (a.severity === "critical" ? "alert-critical" : "alert-warning");
+
+  const iconClass = a.status === "resolved"
+    ? "done"
+    : (a.severity === "critical" ? "crit" : "warn");
+
+  const iconName = a.status === "resolved"
+    ? "ph-check-circle"
+    : (a.severity === "critical" ? "ph-warning-octagon" : "ph-warning");
+
+  const sevBadge = a.severity === "critical"
+    ? '<span class="badge badge-danger">CRITICAL</span>'
+    : '<span class="badge badge-warning">WARNING</span>';
+
+  const statusBadge = a.status === "active"
+    ? '<span class="badge badge-info">Active</span>'
+    : '<span class="badge badge-grey">Resolved</span>';
+
+  const schoolLine = showSchool
+    ? '<div class="alert-school" style="margin-bottom:6px;">' + escapeHtml(a.schoolName) + '</div>'
+    : '';
+
+  const resolvedStamp = a.status === "resolved" && a.resolvedAt
+    ? '<div class="alert-resolved-stamp">Resolved on ' + formatDateTime(a.resolvedAt) + '</div>'
+    : '';
+
+  return '' +
+    '<div class="alert-card ' + severityClass + '">' +
+    '  <div class="alert-icon ' + iconClass + '"><i class="ph-fill ' + iconName + '"></i></div>' +
+    '  <div class="alert-body">' +
+    schoolLine +
+    '    <div class="alert-meta">' + sevBadge + '<span class="badge badge-info">' + escapeHtml(a.item) + '</span>' +
+    statusBadge + '<span class="alert-time">' + timeAgo(a.timestamp) + '</span></div>' +
+    '    <div class="alert-title">' + escapeHtml(a.title) + '</div>' +
+    '    <div class="alert-message">' + escapeHtml(a.message) + '</div>' +
+    resolvedStamp +
+    '  </div>' +
+    '  <div class="alert-action"></div>' +
+    '</div>';
+}
+
+// =============================================================
+// SECTION 5: PROFILE
+// =============================================================
+
+function renderProfile() {
+  const u = CURRENT_USER;
+  document.getElementById("profileAccount").innerHTML = '' +
+    profileRow("Full Name", u.name) +
+    profileRow("Email", u.email) +
+    profileRow("Role", "Government Official") +
+    profileRow("District", u.district === "All" ? "All Districts" : u.district) +
+    profileRow("Member Since", u.createdAt ? formatDate(u.createdAt.split("T")[0]) : "—");
+}
+
+function profileRow(label, value) {
+  return '<div class="profile-row"><span class="label">' + label + '</span><span class="value">' + value + '</span></div>';
+}

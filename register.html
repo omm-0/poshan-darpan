@@ -4,142 +4,127 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Register — Poshan Darpan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web" />
   <link rel="stylesheet" href="css/global.css" />
   <link rel="stylesheet" href="css/auth.css" />
-  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/bold/style.css" />
 </head>
 <body>
-  <div id="toast-container"></div>
-
   <main class="auth-page">
-    <div class="auth-card wide" id="register-card">
-      <!-- Loading overlay -->
-      <div class="auth-spinner-overlay" id="spinner">
-        <div class="spinner"></div>
-        <p>Creating your account…</p>
-      </div>
-
-      <!-- Logo -->
-      <div class="auth-logo">
-        <div class="auth-logo-icon">
-          <i class="ph-bold ph-bowl-food"></i>
+    <div class="auth-card register-card">
+      <div class="auth-header">
+        <div class="auth-logo-circle">
+          <i class="ph-fill ph-user-plus"></i>
         </div>
-        <h1>Create Account</h1>
-        <p class="tagline">Join Poshan Darpan — Nutrition Mirror</p>
+        <h1 class="auth-title-hi">Create Account</h1>
+        <div class="auth-title-en">पोषण दर्पण</div>
+        <p class="auth-subtitle">Join Poshan Darpan to monitor mid-day meals</p>
       </div>
 
-      <!-- Form -->
-      <form class="auth-form" id="register-form" novalidate>
+      <form class="auth-form" id="registerForm" autocomplete="off" novalidate>
         <div class="form-group">
           <label class="form-label" for="name">Full Name</label>
-          <input
-            type="text"
-            id="name"
-            class="form-control"
-            placeholder="e.g. Ramesh Kumar"
-            autocomplete="name"
-            required
-          />
-          <span class="form-error" id="name-error"></span>
+          <div class="input-with-icon">
+            <i class="ph ph-user input-icon"></i>
+            <input type="text" id="name" name="name" class="form-input" placeholder="Enter your full name" required />
+          </div>
+          <span class="field-error" id="err-name"></span>
         </div>
 
         <div class="form-group">
           <label class="form-label" for="email">Email Address</label>
-          <input
-            type="email"
-            id="email"
-            class="form-control"
-            placeholder="you@example.com"
-            autocomplete="email"
-            required
-          />
-          <span class="form-error" id="email-error"></span>
+          <div class="input-with-icon">
+            <i class="ph ph-envelope input-icon"></i>
+            <input type="email" id="email" name="email" class="form-input" placeholder="you@example.com" required />
+          </div>
+          <span class="field-error" id="err-email"></span>
         </div>
 
         <div class="form-group">
           <label class="form-label" for="password">Password</label>
-          <div class="pwd-wrap">
-            <input
-              type="password"
-              id="password"
-              class="form-control"
-              placeholder="Min. 6 characters"
-              autocomplete="new-password"
-              required
-            />
-            <span class="pwd-toggle" id="toggle-pwd">
-              <i class="ph-bold ph-eye" id="toggle-pwd-icon"></i>
-            </span>
+          <div class="input-with-icon">
+            <i class="ph ph-lock input-icon"></i>
+            <input type="password" id="password" name="password" class="form-input" placeholder="At least 6 characters" required />
+            <button type="button" class="pwd-toggle" data-target="password" aria-label="Show password">
+              <i class="ph ph-eye"></i>
+            </button>
           </div>
-          <span class="form-error" id="password-error"></span>
+          <span class="field-error" id="err-password"></span>
         </div>
 
         <div class="form-group">
-          <label class="form-label" for="confirm-password">Confirm Password</label>
-          <input
-            type="password"
-            id="confirm-password"
-            class="form-control"
-            placeholder="Re-enter password"
-            autocomplete="new-password"
-            required
-          />
-          <span class="form-error" id="confirm-error"></span>
-        </div>
-
-        <!-- Role Selection -->
-        <div class="form-group">
-          <label class="form-label">Select Role</label>
-          <div class="role-select-wrap">
-            <label class="role-option" id="role-school-label">
-              <input type="radio" name="role" value="school" id="role-school" />
-              <i class="ph-bold ph-chalkboard-teacher"></i>
-              <span>School Admin</span>
-            </label>
-            <label class="role-option" id="role-gov-label">
-              <input type="radio" name="role" value="government" id="role-gov" />
-              <i class="ph-bold ph-buildings"></i>
-              <span>Government Official</span>
-            </label>
+          <label class="form-label" for="confirmPassword">Confirm Password</label>
+          <div class="input-with-icon">
+            <i class="ph ph-lock-key input-icon"></i>
+            <input type="password" id="confirmPassword" name="confirmPassword" class="form-input" placeholder="Re-enter password" required />
+            <button type="button" class="pwd-toggle" data-target="confirmPassword" aria-label="Show password">
+              <i class="ph ph-eye"></i>
+            </button>
           </div>
-          <span class="form-error" id="role-error"></span>
+          <span class="field-error" id="err-confirm"></span>
         </div>
 
-        <!-- School selector (shown if role=school) -->
-        <div class="form-group conditional-field" id="school-field">
-          <label class="form-label" for="school-select">Assigned School</label>
-          <select id="school-select" class="form-control">
-            <option value="">— Select School —</option>
+        <div class="form-group">
+          <label class="form-label" for="role">Role</label>
+          <select id="role" name="role" class="form-select" required>
+            <option value="">Select your role...</option>
+            <option value="school">School Administrator</option>
+            <option value="government">Government Official</option>
           </select>
-          <span class="form-error" id="school-error"></span>
+          <span class="field-error" id="err-role"></span>
         </div>
 
-        <!-- District field (shown if role=government) -->
-        <div class="form-group conditional-field" id="district-field">
-          <label class="form-label" for="district">District / State</label>
-          <input
-            type="text"
-            id="district"
-            class="form-control"
-            placeholder="e.g. Madhya Pradesh"
-          />
-          <span class="form-error" id="district-error"></span>
+        <div class="conditional-field" id="schoolFieldWrap">
+          <div class="form-group">
+            <label class="form-label" for="schoolId">Your School</label>
+            <select id="schoolId" name="schoolId" class="form-select">
+              <option value="">Select your school...</option>
+            </select>
+            <span class="field-error" id="err-school"></span>
+          </div>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-full" id="register-btn">
-          <i class="ph-bold ph-user-plus"></i>
+        <div class="conditional-field" id="districtFieldWrap">
+          <div class="form-group">
+            <label class="form-label" for="district">District</label>
+            <div class="input-with-icon">
+              <i class="ph ph-map-pin input-icon"></i>
+              <input type="text" id="district" name="district" class="form-input" placeholder="Enter your district" />
+            </div>
+            <span class="field-error" id="err-district"></span>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block btn-lg">
           Create Account
+          <i class="ph ph-arrow-right"></i>
         </button>
       </form>
 
-      <div class="auth-footer">
-        Already have an account? <a href="index.html">Login here</a>
-      </div>
+      <p class="auth-footer">
+        Already have an account?
+        <a href="index.html">Login here</a>
+      </p>
     </div>
   </main>
 
-  <script src="js/utils.js"></script>
   <script src="js/mock-data.js"></script>
+  <script src="js/utils.js"></script>
   <script src="js/auth.js"></script>
+  <script>
+    initDataStore();
+    checkExistingSession();
+
+    document.addEventListener("DOMContentLoaded", () => {
+      populateSchoolDropdown();
+      setupPasswordToggle();
+      setupRoleFieldToggle();
+      setupInlineErrorClear();
+      const form = document.getElementById("registerForm");
+      if (form) form.addEventListener("submit", handleRegister);
+    });
+  </script>
 </body>
 </html>
