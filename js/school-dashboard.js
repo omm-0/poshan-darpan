@@ -172,6 +172,8 @@ function renderOverviewStats() {
   const meals = document.getElementById("kpiTodayMeals");
 
   if (today) {
+    att.style.fontSize = "";
+    meals.style.fontSize = "";
     att.textContent = "0";
     animateCounter(att, today.studentsPresent, 900);
     meals.textContent = "0";
@@ -180,6 +182,7 @@ function renderOverviewStats() {
     att.textContent = "Not submitted";
     att.style.fontSize = "16px";
     meals.textContent = "—";
+    meals.style.fontSize = "";
   }
 }
 
@@ -233,7 +236,7 @@ function renderOverviewAlerts() {
 function renderInventory() {
   renderLargeInvCards();
   renderTransactionTable();
-  setupStockHint();
+  refreshStockHint();
 }
 
 function renderLargeInvCards() {
@@ -289,29 +292,27 @@ function renderTransactionTable() {
   }).join("");
 }
 
-function setupStockHint() {
+function refreshStockHint() {
   const itemSel = document.getElementById("stockItem");
-  const qtyInput = document.getElementById("stockQty");
   const hint    = document.getElementById("stockHint");
   const hintTxt = document.getElementById("stockHintText");
+  const qtyInput = document.getElementById("stockQty");
 
-  function update() {
-    const k = itemSel.value;
-    if (!k) { hint.style.display = "none"; return; }
-    const inv = getInventory(CURRENT_SCHOOL.schoolId);
-    const slot = inv[k];
-    const remaining = parseFloat((slot.max - slot.current).toFixed(2));
-    hint.style.display = "flex";
-    const label = k.charAt(0).toUpperCase() + k.slice(1);
-    hintTxt.innerHTML = '<b>' + label + ':</b> You can add up to <b>' + remaining + ' kg</b> (capacity: ' + slot.max + ' kg, current: ' + slot.current + ' kg).';
-    qtyInput.max = remaining;
-  }
-
-  itemSel.removeEventListener("change", update);
-  itemSel.addEventListener("change", update);
+  const k = itemSel.value;
+  if (!k) { hint.style.display = "none"; return; }
+  const inv = getInventory(CURRENT_SCHOOL.schoolId);
+  const slot = inv[k];
+  const remaining = parseFloat((slot.max - slot.current).toFixed(2));
+  hint.style.display = "flex";
+  const label = k.charAt(0).toUpperCase() + k.slice(1);
+  hintTxt.innerHTML = '<b>' + label + ':</b> You can add up to <b>' + remaining + ' kg</b> (capacity: ' + slot.max + ' kg, current: ' + slot.current + ' kg).';
+  qtyInput.max = remaining;
 }
 
 function setupAddStockForm() {
+  const itemSel = document.getElementById("stockItem");
+  itemSel.addEventListener("change", refreshStockHint);
+
   const form = document.getElementById("addStockForm");
   form.addEventListener("submit", (e) => {
     e.preventDefault();

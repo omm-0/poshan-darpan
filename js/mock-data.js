@@ -380,13 +380,16 @@ function submitAttendance(schoolId, dateStr, studentsPresent) {
   logTransaction(schoolId, "deduction", "Wheat", wheatNeeded, "Attendance (" + studentsPresent + " students)");
   logTransaction(schoolId, "deduction", "Dal",   dalNeeded,   "Attendance (" + studentsPresent + " students)");
 
-  // Step 8 - check for new alerts
+  // Step 8 - check for new alerts (skip if active alert already exists for same school+item)
   const newInv = getInventory(schoolId);
   const alertsGenerated = [];
+  const existingActive = getAlertsBySchool(schoolId).filter(a => a.status === "active");
   ["rice", "wheat", "dal"].forEach(itemKey => {
     const slot = newInv[itemKey];
     const pct = (slot.current / slot.max) * 100;
     const itemLabel = itemKey.charAt(0).toUpperCase() + itemKey.slice(1);
+    const alreadyActive = existingActive.some(a => a.item.toLowerCase() === itemKey);
+    if (alreadyActive) return;
     if (pct < 10) {
       const a = createAlert(schoolId, school.name, "critical", itemLabel,
         "CRITICAL: " + itemLabel + " stock critically low",
