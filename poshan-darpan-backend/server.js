@@ -11,6 +11,7 @@ const morgan = require('morgan');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 
+const { credentialsConfigured } = require('./config/firebase-admin');
 const errorHandler = require('./middleware/errorHandler');
 const authRoutes = require('./routes/authRoutes');
 const schoolRoutes = require('./routes/schoolRoutes');
@@ -23,9 +24,12 @@ const app = express();
 
 app.use(helmet());
 
+// CORS — in dev, accept any origin (including file:// which sends "Origin: null").
+// In production, FRONTEND_URL pins it to a single allowed origin.
+const isDev = (process.env.NODE_ENV || 'development') !== 'production';
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || '*',
+    origin: isDev ? true : (process.env.FRONTEND_URL || false),
     credentials: true
   })
 );
@@ -64,6 +68,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     success: true,
     message: 'Poshan Darpan API is running',
+    firebaseConfigured: credentialsConfigured,
     timestamp: new Date().toISOString()
   });
 });
