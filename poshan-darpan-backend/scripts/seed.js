@@ -211,12 +211,21 @@ async function seedUsers() {
 }
 
 function lastNWorkingDays(n, refDate) {
+  // Walk backwards in IST so weekend boundaries match the rest of the app
+  // (controllers and helpers all key on IST date strings).
+  const istOffsetMinutes = 5 * 60 + 30;
   const dates = [];
-  const cursor = new Date(refDate);
+  const cursor = new Date(refDate.getTime() + istOffsetMinutes * 60000);
   while (dates.length < n) {
     const day = cursor.getUTCDay();
     if (day !== 0 && day !== 6) {
-      dates.push(new Date(cursor));
+      const y = cursor.getUTCFullYear();
+      const m = String(cursor.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(cursor.getUTCDate()).padStart(2, '0');
+      dates.push({
+        dateStr: `${y}-${m}-${dd}`,
+        timestamp: new Date(cursor.getTime() - istOffsetMinutes * 60000)
+      });
     }
     cursor.setUTCDate(cursor.getUTCDate() - 1);
   }
@@ -241,11 +250,12 @@ async function seedAttendance() {
   let inBatch = 0;
 
   for (const school of activeSchools) {
-    for (const d of dates) {
+    for (const { dateStr, timestamp } of dates) {
       const pct = 0.7 + Math.random() * 0.25;
       const studentsPresent = Math.round(school.enrollment * pct);
-      const dateStr = d.toISOString().split('T')[0];
-      const ref = db.collection(COLLECTIONS.ATTENDANCE).doc();
+      // Match controller's deterministic ID convention (schoolId_date) so seeded
+      // records collide cleanly with anything submitted via /api/attendance.
+      const ref = db.collection(COLLECTIONS.ATTENDANCE).doc(`${school.id}_${dateStr}`);
       batch.set(ref, {
         schoolId: school.id,
         date: dateStr,
@@ -254,7 +264,7 @@ async function seedAttendance() {
         wheatUsed: parseFloat((studentsPresent * 0.1).toFixed(2)),
         dalUsed: parseFloat((studentsPresent * 0.03).toFixed(2)),
         submittedBy: 'seed',
-        timestamp: admin.firestore.Timestamp.fromDate(d)
+        timestamp: admin.firestore.Timestamp.fromDate(timestamp)
       });
       inBatch++;
       count++;

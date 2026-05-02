@@ -22,6 +22,11 @@ const transactionRoutes = require('./routes/transactionRoutes');
 
 const app = express();
 
+// Trust the first proxy hop (nginx/cloud load balancer). Required for
+// express-rate-limit to read the real client IP from X-Forwarded-For instead
+// of treating every request as coming from the proxy.
+app.set('trust proxy', 1);
+
 app.use(helmet());
 
 // CORS — in dev, accept any origin (including file:// which sends "Origin: null").
@@ -73,7 +78,7 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-app.use('*', (req, res) => {
+app.use((req, res) => {
   res.status(404).json({
     success: false,
     message: 'API endpoint not found',

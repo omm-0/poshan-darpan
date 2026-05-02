@@ -21,28 +21,39 @@ const MOCK_SCHOOLS = [
   { schoolId: "s5", name: "Govt Middle School, Jabalpur",   district: "Jabalpur",  enrollment: 320, status: "active",   contactPerson: "Ramesh Yadav", contactEmail: "ramesh@school.com" }
 ];
 
+// Anchor every seed timestamp to "now" so the demo data never goes stale.
+// Mid-day-meal time on the seed anchor day (today) for inventory/transactions.
+const _NOW = new Date();
+const _SEED_ANCHOR_ISO = _NOW.toISOString();
+function _daysAgoIso(days, hour, min) {
+  const d = new Date(_NOW.getTime() - days * 86400000);
+  if (hour !== undefined) d.setHours(hour, min || 0, 0, 0);
+  return d.toISOString();
+}
+
 const MOCK_INVENTORY = [
-  { schoolId: "s1", rice: { current: 80,  max: 200 }, wheat: { current: 60,  max: 150 }, dal: { current: 15, max: 50  }, lastUpdated: "2026-04-25T11:00:00.000Z" },
-  { schoolId: "s2", rice: { current: 150, max: 300 }, wheat: { current: 120, max: 250 }, dal: { current: 35, max: 80  }, lastUpdated: "2026-04-25T11:00:00.000Z" },
-  { schoolId: "s3", rice: { current: 30,  max: 400 }, wheat: { current: 200, max: 350 }, dal: { current: 8,  max: 100 }, lastUpdated: "2026-04-25T11:00:00.000Z" },
-  { schoolId: "s4", rice: { current: 90,  max: 150 }, wheat: { current: 70,  max: 120 }, dal: { current: 25, max: 40  }, lastUpdated: "2026-04-20T11:00:00.000Z" },
-  { schoolId: "s5", rice: { current: 45,  max: 250 }, wheat: { current: 30,  max: 200 }, dal: { current: 12, max: 60  }, lastUpdated: "2026-04-25T11:00:00.000Z" }
+  { schoolId: "s1", rice: { current: 80,  max: 200 }, wheat: { current: 60,  max: 150 }, dal: { current: 15, max: 50  }, lastUpdated: _SEED_ANCHOR_ISO },
+  { schoolId: "s2", rice: { current: 150, max: 300 }, wheat: { current: 120, max: 250 }, dal: { current: 35, max: 80  }, lastUpdated: _SEED_ANCHOR_ISO },
+  { schoolId: "s3", rice: { current: 30,  max: 400 }, wheat: { current: 200, max: 350 }, dal: { current: 8,  max: 100 }, lastUpdated: _SEED_ANCHOR_ISO },
+  { schoolId: "s4", rice: { current: 90,  max: 150 }, wheat: { current: 70,  max: 120 }, dal: { current: 25, max: 40  }, lastUpdated: _daysAgoIso(7, 11) },
+  { schoolId: "s5", rice: { current: 45,  max: 250 }, wheat: { current: 30,  max: 200 }, dal: { current: 12, max: 60  }, lastUpdated: _SEED_ANCHOR_ISO }
 ];
 
-// Generate attendance records (10 per active school, last 10 working days)
+// Generate attendance records (10 per active school, last 10 working days from today)
 function _generateMockAttendance() {
   const records = [];
   const activeSchools = MOCK_SCHOOLS.filter(s => s.status === "active");
 
-  // Get last 10 working days (skipping weekends)
+  // Get last 10 working days (skipping weekends), starting from today and walking back.
   const dates = [];
-  let cursor = new Date("2026-04-25T11:00:00.000Z");
+  let cursor = new Date(_NOW);
+  cursor.setHours(11, 0, 0, 0); // mid-day-meal time
   while (dates.length < 10) {
-    const day = cursor.getUTCDay();
+    const day = cursor.getDay();
     if (day !== 0 && day !== 6) {
       dates.push(new Date(cursor));
     }
-    cursor.setUTCDate(cursor.getUTCDate() - 1);
+    cursor.setDate(cursor.getDate() - 1);
   }
 
   let idCounter = 1;
@@ -50,7 +61,12 @@ function _generateMockAttendance() {
     dates.forEach(d => {
       const pct = 0.70 + Math.random() * 0.25; // 70-95%
       const studentsPresent = Math.round(school.enrollment * pct);
-      const dateStr = d.toISOString().split("T")[0];
+      // Date string keyed in local time so it matches todayStr() for "Today's
+      // Attendance" lookups regardless of the user's timezone.
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      const dateStr = `${y}-${m}-${dd}`;
       const record = {
         id: "att_seed_" + (idCounter++),
         schoolId: school.schoolId,
@@ -59,7 +75,7 @@ function _generateMockAttendance() {
         riceUsed: parseFloat((studentsPresent * 0.1).toFixed(2)),
         wheatUsed: parseFloat((studentsPresent * 0.1).toFixed(2)),
         dalUsed: parseFloat((studentsPresent * 0.03).toFixed(2)),
-        timestamp: new Date(d.getTime() + 11 * 3600 * 1000).toISOString()
+        timestamp: d.toISOString()
       };
       records.push(record);
     });
@@ -71,22 +87,22 @@ function _generateMockAttendance() {
 const MOCK_ATTENDANCE = _generateMockAttendance();
 
 const MOCK_ALERTS = [
-  { id: "al_1", schoolId: "s3", schoolName: "Govt High School, Bhopal",     severity: "critical", item: "Rice",  status: "active",   title: "CRITICAL: Rice stock critically low",  message: "Rice stock is at 7.5% (30 kg out of 400 kg). Immediate replenishment needed.", timestamp: "2026-04-25T09:30:00.000Z", resolvedAt: null },
-  { id: "al_2", schoolId: "s3", schoolName: "Govt High School, Bhopal",     severity: "critical", item: "Dal",   status: "active",   title: "CRITICAL: Dal stock critically low",   message: "Dal stock is at 8% (8 kg out of 100 kg). Immediate replenishment needed.",     timestamp: "2026-04-25T09:35:00.000Z", resolvedAt: null },
-  { id: "al_3", schoolId: "s5", schoolName: "Govt Middle School, Jabalpur", severity: "warning",  item: "Wheat", status: "active",   title: "WARNING: Wheat stock low",             message: "Wheat stock is at 15% (30 kg out of 200 kg). Please reorder soon.",            timestamp: "2026-04-24T14:20:00.000Z", resolvedAt: null },
-  { id: "al_4", schoolId: "s5", schoolName: "Govt Middle School, Jabalpur", severity: "warning",  item: "Rice",  status: "active",   title: "WARNING: Rice stock low",              message: "Rice stock is at 18% (45 kg out of 250 kg). Please reorder soon.",             timestamp: "2026-04-24T14:25:00.000Z", resolvedAt: null },
-  { id: "al_5", schoolId: "s1", schoolName: "Govt Primary School, Ujjain",  severity: "warning",  item: "Dal",   status: "resolved", title: "Dal stock was low",                    message: "Dal was at 18% (9 kg out of 50 kg). Now restocked to 15 kg.",                  timestamp: "2026-04-21T08:00:00.000Z", resolvedAt: "2026-04-22T10:00:00.000Z" }
+  { id: "al_1", schoolId: "s3", schoolName: "Govt High School, Bhopal",     severity: "critical", item: "Rice",  status: "active",   title: "CRITICAL: Rice stock critically low",  message: "Rice stock is at 7.5% (30 kg out of 400 kg). Immediate replenishment needed.", timestamp: _daysAgoIso(0, 9, 30), resolvedAt: null },
+  { id: "al_2", schoolId: "s3", schoolName: "Govt High School, Bhopal",     severity: "critical", item: "Dal",   status: "active",   title: "CRITICAL: Dal stock critically low",   message: "Dal stock is at 8% (8 kg out of 100 kg). Immediate replenishment needed.",     timestamp: _daysAgoIso(0, 9, 35), resolvedAt: null },
+  { id: "al_3", schoolId: "s5", schoolName: "Govt Middle School, Jabalpur", severity: "warning",  item: "Wheat", status: "active",   title: "WARNING: Wheat stock low",             message: "Wheat stock is at 15% (30 kg out of 200 kg). Please reorder soon.",            timestamp: _daysAgoIso(1, 14, 20), resolvedAt: null },
+  { id: "al_4", schoolId: "s5", schoolName: "Govt Middle School, Jabalpur", severity: "warning",  item: "Rice",  status: "active",   title: "WARNING: Rice stock low",              message: "Rice stock is at 18% (45 kg out of 250 kg). Please reorder soon.",             timestamp: _daysAgoIso(1, 14, 25), resolvedAt: null },
+  { id: "al_5", schoolId: "s1", schoolName: "Govt Primary School, Ujjain",  severity: "warning",  item: "Dal",   status: "resolved", title: "Dal stock was low",                    message: "Dal was at 18% (9 kg out of 50 kg). Now restocked to 15 kg.",                  timestamp: _daysAgoIso(4, 8,  0), resolvedAt: _daysAgoIso(3, 10, 0) }
 ];
 
 const MOCK_TRANSACTIONS = [
-  { id: "tx_1", schoolId: "s1", type: "addition",  item: "Rice",  quantity: 50.0, reason: "Stock delivery",       timestamp: "2026-04-22T08:30:00.000Z" },
-  { id: "tx_2", schoolId: "s1", type: "deduction", item: "Rice",  quantity: 22.0, reason: "Attendance (220 students)", timestamp: "2026-04-25T11:00:00.000Z" },
-  { id: "tx_3", schoolId: "s1", type: "deduction", item: "Wheat", quantity: 22.0, reason: "Attendance (220 students)", timestamp: "2026-04-25T11:00:00.000Z" },
-  { id: "tx_4", schoolId: "s1", type: "deduction", item: "Dal",   quantity: 6.6,  reason: "Attendance (220 students)", timestamp: "2026-04-25T11:00:00.000Z" },
-  { id: "tx_5", schoolId: "s2", type: "addition",  item: "Wheat", quantity: 80.0, reason: "Stock delivery",       timestamp: "2026-04-23T09:00:00.000Z" },
-  { id: "tx_6", schoolId: "s3", type: "deduction", item: "Rice",  quantity: 54.0, reason: "Attendance (540 students)", timestamp: "2026-04-25T11:00:00.000Z" },
-  { id: "tx_7", schoolId: "s5", type: "addition",  item: "Dal",   quantity: 25.0, reason: "Stock delivery",       timestamp: "2026-04-20T08:00:00.000Z" },
-  { id: "tx_8", schoolId: "s5", type: "deduction", item: "Wheat", quantity: 28.0, reason: "Attendance (280 students)", timestamp: "2026-04-25T11:00:00.000Z" }
+  { id: "tx_1", schoolId: "s1", type: "addition",  item: "Rice",  quantity: 50.0, reason: "Stock delivery",            timestamp: _daysAgoIso(3, 8, 30) },
+  { id: "tx_2", schoolId: "s1", type: "deduction", item: "Rice",  quantity: 22.0, reason: "Attendance (220 students)", timestamp: _daysAgoIso(0, 11, 0) },
+  { id: "tx_3", schoolId: "s1", type: "deduction", item: "Wheat", quantity: 22.0, reason: "Attendance (220 students)", timestamp: _daysAgoIso(0, 11, 0) },
+  { id: "tx_4", schoolId: "s1", type: "deduction", item: "Dal",   quantity: 6.6,  reason: "Attendance (220 students)", timestamp: _daysAgoIso(0, 11, 0) },
+  { id: "tx_5", schoolId: "s2", type: "addition",  item: "Wheat", quantity: 80.0, reason: "Stock delivery",            timestamp: _daysAgoIso(2, 9, 0) },
+  { id: "tx_6", schoolId: "s3", type: "deduction", item: "Rice",  quantity: 54.0, reason: "Attendance (540 students)", timestamp: _daysAgoIso(0, 11, 0) },
+  { id: "tx_7", schoolId: "s5", type: "addition",  item: "Dal",   quantity: 25.0, reason: "Stock delivery",            timestamp: _daysAgoIso(5, 8, 0) },
+  { id: "tx_8", schoolId: "s5", type: "deduction", item: "Wheat", quantity: 28.0, reason: "Attendance (280 students)", timestamp: _daysAgoIso(0, 11, 0) }
 ];
 
 // ---------- LOCALSTORAGE KEYS ----------

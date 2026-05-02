@@ -182,7 +182,9 @@ function setupRoleFieldToggle() {
 function populateSchoolDropdown() {
   const sel = document.getElementById("schoolId");
   if (!sel) return;
-  const schools = getAllSchools();
+  // Only active schools are eligible — registering against an inactive school
+  // would let a user create an account that can never submit attendance.
+  const schools = (typeof getActiveSchools === "function" ? getActiveSchools() : getAllSchools().filter(s => s.status === "active"));
   sel.innerHTML = '<option value="">Select your school...</option>' +
     schools.map(s => '<option value="' + s.schoolId + '">' + escapeHtml(s.name) + '</option>').join("");
 }

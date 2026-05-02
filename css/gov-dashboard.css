@@ -1,6 +1,7 @@
 /* ============================================================
    POSHAN DARPAN - GOVERNMENT DASHBOARD STYLES
-   (Extends school-dashboard.css)
+   Page-specific only. Shared layout/sidebar/kpi/alert/profile
+   styles come from dashboard-shared.css.
 ============================================================ */
 
 .chart-card {

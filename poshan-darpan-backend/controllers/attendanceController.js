@@ -70,14 +70,14 @@ async function submitAttendance(req, res) {
       );
     }
 
-    const dupSnap = await db
-      .collection(COLLECTIONS.ATTENDANCE)
-      .where('schoolId', '==', schoolId)
-      .where('date', '==', date)
-      .limit(1)
-      .get();
+    // Deterministic ID = atomic uniqueness guarantee inside the transaction below.
+    // The pre-check is a fast-fail UX optimization; the transaction.get() is the
+    // authoritative race-safe check.
+    const attendanceDocId = `${schoolId}_${date}`;
+    const attendanceRef = db.collection(COLLECTIONS.ATTENDANCE).doc(attendanceDocId);
 
-    if (!dupSnap.empty) {
+    const preDup = await attendanceRef.get();
+    if (preDup.exists) {
       return errorResponse(
         res,
         409,
@@ -110,6 +110,13 @@ async function submitAttendance(req, res) {
     let txResult;
     try {
       txResult = await db.runTransaction(async (transaction) => {
+        // Race-safe dedupe: re-read inside the transaction. If a concurrent
+        // submission landed between the pre-check and now, abort.
+        const attendanceSnap = await transaction.get(attendanceRef);
+        if (attendanceSnap.exists) {
+          throw new Error('DUPLICATE_ATTENDANCE');
+        }
+
         const deduction = await inventoryService.deductInventory(
           schoolId,
           riceNeeded,
@@ -118,7 +125,6 @@ async function submitAttendance(req, res) {
           transaction
         );
 
-        const attendanceRef = db.collection(COLLECTIONS.ATTENDANCE).doc();
         transaction.set(attendanceRef, {
           schoolId,
           date,
@@ -149,10 +155,18 @@ async function submitAttendance(req, res) {
           });
         });
 
-        return { ...deduction, attendanceId: attendanceRef.id };
+        return { ...deduction, attendanceId: attendanceDocId };
       });
     } catch (txError) {
       const msg = String(txError.message || '');
+      if (msg === 'DUPLICATE_ATTENDANCE') {
+        return errorResponse(
+          res,
+          409,
+          `Attendance already submitted for ${date}. Each date can only have one submission per school.`,
+          'DUPLICATE_ATTENDANCE'
+        );
+      }
       if (msg.startsWith('INSUFFICIENT_STOCK')) {
         return errorResponse(
           res,
