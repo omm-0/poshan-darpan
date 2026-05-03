@@ -115,8 +115,10 @@ function showToast(message, type) {
   toast.className = "toast toast-" + type;
   toast.innerHTML =
     '<i class="ph-fill ' + iconMap[type] + ' toast-icon"></i>' +
-    '<span class="toast-message">' + message + '</span>' +
-    '<button class="toast-close" type="button"><i class="ph ph-x"></i></button>';
+    '<span class="toast-message"></span>' +
+    '<button class="toast-close" type="button" aria-label="Dismiss"><i class="ph ph-x"></i></button>';
+  // Set the user-facing text via textContent to prevent HTML/script injection.
+  toast.querySelector(".toast-message").textContent = String(message == null ? "" : message);
 
   const closeBtn = toast.querySelector(".toast-close");
   closeBtn.addEventListener("click", () => _removeToast(toast));
@@ -146,16 +148,19 @@ function showConfirmDialog(title, message, onConfirm, onCancel) {
   wrap.id = "confirmDialog";
   wrap.className = "modal-overlay";
   wrap.innerHTML =
-    '<div class="modal-card confirm-card">' +
-    '  <h3 class="confirm-title">' + title + '</h3>' +
-    '  <p class="confirm-message">' + message + '</p>' +
+    '<div class="modal-card confirm-card" role="dialog" aria-modal="true">' +
+    '  <h3 class="confirm-title"></h3>' +
+    '  <p class="confirm-message"></p>' +
     '  <div class="confirm-actions">' +
     '    <button class="btn btn-outline" data-action="cancel">Cancel</button>' +
     '    <button class="btn btn-primary" data-action="confirm">Confirm</button>' +
     '  </div>' +
     '</div>';
+  wrap.querySelector(".confirm-title").textContent = String(title == null ? "" : title);
+  wrap.querySelector(".confirm-message").textContent = String(message == null ? "" : message);
 
   function close(cb) {
+    document.removeEventListener("keydown", escHandler);
     wrap.classList.add("modal-out");
     setTimeout(() => {
       if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
@@ -170,10 +175,7 @@ function showConfirmDialog(title, message, onConfirm, onCancel) {
   wrap.querySelector('[data-action="confirm"]').addEventListener("click", () => close(onConfirm));
 
   function escHandler(e) {
-    if (e.key === "Escape") {
-      document.removeEventListener("keydown", escHandler);
-      close(onCancel);
-    }
+    if (e.key === "Escape") close(onCancel);
   }
   document.addEventListener("keydown", escHandler);
 
@@ -185,11 +187,16 @@ function showConfirmDialog(title, message, onConfirm, onCancel) {
 function animateCounter(element, target, duration) {
   if (!element) return;
   duration = duration || 1000;
-  const isFloat = String(target).indexOf(".") !== -1;
+  const endVal = Number(target);
   const isPercent = String(element.dataset.suffix || "").indexOf("%") !== -1;
+  // Guard against NaN / Infinity targets so the counter doesn't display "NaN".
+  if (!isFinite(endVal)) {
+    element.textContent = isPercent ? "0%" : "0";
+    return;
+  }
+  const isFloat = String(target).indexOf(".") !== -1;
   const start = 0;
   const startTime = performance.now();
-  const endVal = Number(target);
 
   function step(now) {
     const elapsed = now - startTime;
@@ -210,26 +217,28 @@ function animateCounter(element, target, duration) {
 // ---------- STOCK HELPERS ----------
 
 function stockColor(current, max) {
-  const pct = (current / max) * 100;
+  const pct = stockPercent(current, max);
   if (pct > 50) return "#059669";
   if (pct >= 20) return "#F59E0B";
   return "#DC2626";
 }
 
 function stockLabel(current, max) {
-  const pct = (current / max) * 100;
+  const pct = stockPercent(current, max);
   if (pct > 50) return "Healthy";
   if (pct >= 20) return "Low";
   return "Critical";
 }
 
 function stockPercent(current, max) {
-  if (!max || max === 0) return 0;
-  return Math.round((current / max) * 100);
+  const c = Number(current);
+  const m = Number(max);
+  if (!isFinite(c) || !isFinite(m) || m <= 0) return 0;
+  return Math.round((c / m) * 100);
 }
 
 function stockBadgeClass(current, max) {
-  const pct = (current / max) * 100;
+  const pct = stockPercent(current, max);
   if (pct > 50) return "badge-success";
   if (pct >= 20) return "badge-warning";
   return "badge-danger";

@@ -74,8 +74,10 @@ function handleRegister(event) {
   if (!email)                   err("err-email", "Email is required.");
   else if (!isValidEmail(email)) err("err-email", "Please enter a valid email.");
   else {
-    const users = JSON.parse(localStorage.getItem("poshanUsers") || "[]");
-    if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
+    let existingUsers = [];
+    try { existingUsers = JSON.parse(localStorage.getItem("poshanUsers") || "[]") || []; }
+    catch (e) { existingUsers = []; }
+    if (existingUsers.some(u => u.email && u.email.toLowerCase() === email.toLowerCase())) {
       err("err-email", "This email is already registered.");
     }
   }

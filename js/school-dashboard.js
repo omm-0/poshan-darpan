@@ -13,7 +13,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   CURRENT_SCHOOL = getSchoolById(CURRENT_USER.schoolId);
   if (!CURRENT_SCHOOL) {
-    showToast("School not found for this account.", "error");
+    showToast("Your school account could not be loaded. Please log in again.", "error");
+    setTimeout(() => { clearSession(); window.location.href = "index.html"; }, 1200);
     return;
   }
 
@@ -286,7 +287,7 @@ function renderTransactionTable() {
       '<td>' + formatDateTime(t.timestamp) + '</td>' +
       '<td>' + escapeHtml(t.item) + '</td>' +
       '<td>' + typeBadge + '</td>' +
-      '<td>' + t.quantity.toFixed(1) + '</td>' +
+      '<td>' + Number(t.quantity).toFixed(1) + '</td>' +
       '<td>' + escapeHtml(t.reason) + '</td>' +
       '</tr>';
   }).join("");
@@ -299,14 +300,16 @@ function refreshStockHint() {
   const qtyInput = document.getElementById("stockQty");
 
   const k = itemSel.value;
-  if (!k) { hint.style.display = "none"; return; }
+  if (!k) { hint.style.display = "none"; qtyInput.removeAttribute("max"); return; }
   const inv = getInventory(CURRENT_SCHOOL.schoolId);
+  if (!inv || !inv[k]) { hint.style.display = "none"; qtyInput.removeAttribute("max"); return; }
   const slot = inv[k];
   const remaining = parseFloat((slot.max - slot.current).toFixed(2));
   hint.style.display = "flex";
   const label = k.charAt(0).toUpperCase() + k.slice(1);
-  hintTxt.innerHTML = '<b>' + label + ':</b> You can add up to <b>' + remaining + ' kg</b> (capacity: ' + slot.max + ' kg, current: ' + slot.current + ' kg).';
-  qtyInput.max = remaining;
+  hintTxt.innerHTML = '<b>' + escapeHtml(label) + ':</b> You can add up to <b>' + remaining + ' kg</b> (capacity: ' + slot.max + ' kg, current: ' + slot.current + ' kg).';
+  if (remaining > 0) qtyInput.max = remaining;
+  else qtyInput.removeAttribute("max");
 }
 
 function setupAddStockForm() {
@@ -370,9 +373,9 @@ function renderAttendanceTable() {
     '<tr>' +
     '<td>' + formatDate(r.date) + '</td>' +
     '<td>' + r.studentsPresent + '</td>' +
-    '<td>' + r.riceUsed.toFixed(1) + '</td>' +
-    '<td>' + r.wheatUsed.toFixed(1) + '</td>' +
-    '<td>' + r.dalUsed.toFixed(2) + '</td>' +
+    '<td>' + Number(r.riceUsed || 0).toFixed(1) + '</td>' +
+    '<td>' + Number(r.wheatUsed || 0).toFixed(1) + '</td>' +
+    '<td>' + Number(r.dalUsed || 0).toFixed(2) + '</td>' +
     '</tr>'
   ).join("");
 }
@@ -470,7 +473,10 @@ function updateAttendancePreview() {
   // Stock check
   if (canSubmit) {
     const inv = getInventory(CURRENT_SCHOOL.schoolId);
-    if (inv.rice.current < rice) {
+    if (!inv) {
+      warnMsg = "Inventory data unavailable. Please refresh the page.";
+      canSubmit = false;
+    } else if (inv.rice.current < rice) {
       warnMsg = "Insufficient Rice stock! Need " + rice + " kg, but only " + inv.rice.current + " kg available.";
       canSubmit = false;
     } else if (inv.wheat.current < wheat) {

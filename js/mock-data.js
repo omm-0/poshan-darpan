@@ -39,15 +39,16 @@ const MOCK_INVENTORY = [
   { schoolId: "s5", rice: { current: 45,  max: 250 }, wheat: { current: 30,  max: 200 }, dal: { current: 12, max: 60  }, lastUpdated: _SEED_ANCHOR_ISO }
 ];
 
-// Generate attendance records (10 per active school, last 10 working days from today)
+// Generate attendance records (10 per active school, last 10 working days BEFORE today).
+// We deliberately exclude today so a fresh user can demo submitting today's attendance.
 function _generateMockAttendance() {
   const records = [];
   const activeSchools = MOCK_SCHOOLS.filter(s => s.status === "active");
 
-  // Get last 10 working days (skipping weekends), starting from today and walking back.
   const dates = [];
   let cursor = new Date(_NOW);
   cursor.setHours(11, 0, 0, 0); // mid-day-meal time
+  cursor.setDate(cursor.getDate() - 1); // start from yesterday
   while (dates.length < 10) {
     const day = cursor.getDay();
     if (day !== 0 && day !== 6) {
@@ -228,14 +229,19 @@ function addStock(schoolId, item, quantity) {
   const idx = all.findIndex(i => i.schoolId === schoolId);
   if (idx === -1) return { success: false, error: "Inventory not found" };
 
-  const itemKey = item.toLowerCase();
+  const itemKey = String(item || "").toLowerCase();
   if (!["rice", "wheat", "dal"].includes(itemKey)) {
     return { success: false, error: "Invalid item" };
   }
 
+  const qty = Number(quantity);
+  if (!isFinite(qty) || qty <= 0) {
+    return { success: false, error: "Quantity must be a positive number" };
+  }
+
   const inv = all[idx];
   const slot = inv[itemKey];
-  const newCurrent = parseFloat((slot.current + Number(quantity)).toFixed(2));
+  const newCurrent = parseFloat((slot.current + qty).toFixed(2));
 
   if (newCurrent > slot.max) {
     const remaining = parseFloat((slot.max - slot.current).toFixed(2));
@@ -317,7 +323,7 @@ function getAttendanceBySchool(schoolId) {
   const all = _read(LS.ATTENDANCE) || [];
   return all
     .filter(r => r.schoolId === schoolId)
-    .sort((a, b) => b.date.localeCompare(a.date));
+    .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 }
 
 function getAllAttendance() {
@@ -338,6 +344,18 @@ function checkDuplicateAttendance(schoolId, dateStr) {
 }
 
 function submitAttendance(schoolId, dateStr, studentsPresent) {
+  // Step 0 - normalize/validate inputs
+  if (!dateStr || typeof dateStr !== "string") {
+    return { success: false, error: "Please select a valid date" };
+  }
+  if (isFutureDate(dateStr)) {
+    return { success: false, error: "Cannot select a future date" };
+  }
+  const count = Math.floor(Number(studentsPresent));
+  if (!isFinite(count) || count < 1) {
+    return { success: false, error: "Students present must be at least 1" };
+  }
+
   // Step 1
   if (checkDuplicateAttendance(schoolId, dateStr)) {
     return { success: false, error: "Attendance already submitted for this date" };
@@ -346,12 +364,10 @@ function submitAttendance(schoolId, dateStr, studentsPresent) {
   // Step 2
   const school = getSchoolById(schoolId);
   if (!school) return { success: false, error: "School not found" };
-  if (studentsPresent > school.enrollment) {
-    return { success: false, error: "Students present (" + studentsPresent + ") cannot exceed enrollment (" + school.enrollment + ")" };
+  if (count > school.enrollment) {
+    return { success: false, error: "Students present (" + count + ") cannot exceed enrollment (" + school.enrollment + ")" };
   }
-  if (studentsPresent < 1) {
-    return { success: false, error: "Students present must be at least 1" };
-  }
+  studentsPresent = count;
 
   // Step 3
   const riceNeeded  = parseFloat((studentsPresent * 0.1).toFixed(2));
@@ -464,12 +480,12 @@ function getAlertsBySchool(schoolId) {
   const all = _read(LS.ALERTS) || [];
   return all
     .filter(a => a.schoolId === schoolId)
-    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
 }
 
 function getAllAlerts() {
   const all = _read(LS.ALERTS) || [];
-  return all.slice().sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  return all.slice().sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
 }
 
 function getActiveAlerts() {
@@ -529,7 +545,7 @@ function getTransactionsBySchool(schoolId) {
   const all = _read(LS.TRANSACTIONS) || [];
   return all
     .filter(t => t.schoolId === schoolId)
-    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
 }
 
 function logTransaction(schoolId, type, item, quantity, reason) {

@@ -16,50 +16,7 @@
 
 ## Table of Contents
 
-1. Introduction
-2. Problem Statement
-3. Objectives
-4. Literature Survey
-5. System Analysis
-   5.1 Existing System & Limitations
-   5.2 Proposed System & Advantages
-6. System Requirements
-   6.1 Hardware Requirements
-   6.2 Software Requirements
-7. System Architecture
-   7.1 Architecture Diagram
-   7.2 Data Flow Diagrams
-   7.3 Module Description
-8. Technology Stack
-9. Database Design
-   9.1 Data Store Structure
-   9.2 Entity Description
-   9.3 Data Dictionary
-10. Module-wise Detailed Design
-    10.1 Authentication Module
-    10.2 School Dashboard Module
-    10.3 Government Dashboard Module
-    10.4 Alert Management Module
-    10.5 Analytics & Reporting Module
-11. UI/UX Design
-    11.1 Screen Flow Diagram
-    11.2 Screen-wise Description
-    11.3 Design System
-    11.4 Responsive Design Strategy
-12. Implementation Details
-    12.1 Folder Structure
-    12.2 File-wise Description
-    12.3 Key Algorithms & Logic
-    12.4 Data Persistence Strategy
-13. Testing
-    13.1 Testing Strategy
-    13.2 Test Cases Table
-    13.3 User Acceptance Testing
-14. Screenshots
-15. Future Enhancements
-16. Conclusion
-17. References
-18. Appendices
+1. Introduction 
 
 ---
 

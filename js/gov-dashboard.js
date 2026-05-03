@@ -341,12 +341,13 @@ function stockCell(current, max) {
 
 function openSchoolModal(schoolId) {
   const sc = getSchoolById(schoolId);
-  if (!sc) return;
+  if (!sc) { showToast("School not found", "error"); return; }
   const inv = getInventory(schoolId);
   const att = getAttendanceBySchool(schoolId).slice(0, 10);
   const alerts = getAlertsBySchool(schoolId);
 
   const root = document.getElementById("schoolModalRoot");
+  if (!root) return;
 
   const statusBadge = sc.status === "active"
     ? '<span class="badge badge-success"><span class="badge-dot" style="background:var(--secondary);"></span>Active</span>'
@@ -365,9 +366,9 @@ function openSchoolModal(schoolId) {
       att.map(r =>
         '<tr><td>' + formatDate(r.date) + '</td>' +
         '<td>' + r.studentsPresent + '</td>' +
-        '<td>' + r.riceUsed.toFixed(1) + ' kg</td>' +
-        '<td>' + r.wheatUsed.toFixed(1) + ' kg</td>' +
-        '<td>' + r.dalUsed.toFixed(2) + ' kg</td></tr>'
+        '<td>' + Number(r.riceUsed || 0).toFixed(1) + ' kg</td>' +
+        '<td>' + Number(r.wheatUsed || 0).toFixed(1) + ' kg</td>' +
+        '<td>' + Number(r.dalUsed || 0).toFixed(2) + ' kg</td></tr>'
       ).join("") +
       '</tbody></table></div>';
 
@@ -411,12 +412,20 @@ function openSchoolModal(schoolId) {
   document.getElementById("schoolModalOverlay").addEventListener("click", (e) => {
     if (e.target.id === "schoolModalOverlay") closeModal();
   });
+  function escHandler(e) {
+    if (e.key === "Escape") {
+      document.removeEventListener("keydown", escHandler);
+      closeModal();
+    }
+  }
+  document.addEventListener("keydown", escHandler);
   qsa("#schoolModalTabs .school-modal-tab").forEach(t => {
     t.addEventListener("click", () => {
       qsa("#schoolModalTabs .school-modal-tab").forEach(b => b.classList.remove("active"));
       t.classList.add("active");
       qsa(".school-modal-tab-content").forEach(c => c.classList.remove("active"));
-      document.getElementById("tab-" + t.dataset.tab).classList.add("active");
+      const tabContent = document.getElementById("tab-" + t.dataset.tab);
+      if (tabContent) tabContent.classList.add("active");
     });
   });
 }
